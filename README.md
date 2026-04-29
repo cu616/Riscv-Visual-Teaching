@@ -1,47 +1,56 @@
-# Codex 学习资料导航（四文件阅读版）
+# RISC-V 可视化教学桌面软件
 
-本仓库包含 4 份入门到进阶的 Codex 教程文档，覆盖：
-- Codex 基础认知与使用流程
-- Prompt / Agent / Skill 核心概念
-- Windows / macOS / VS Code 配置实践
-- Skill 的创建、调用与团队落地
+本仓库用于大创项目《基于 RISC-V 指令集可视化教学的桌面软件》的文档整理、AI 协作训练与软件原型开发。
 
-## 文档清单
+当前已经包含：
 
-1. [codex_tutorial.md](https://github.com/HTY679/dachuang/blob/main/codex_tutorial.md)  
-   适合先读，建立整体认知：Codex 是什么、怎么提需求、怎么迭代、常见问题与团队协作方式。
+- `app/`：RISC-V 可视化教学软件无依赖 MVP
+- `docs/`：产品说明、开发步骤、环境搭建、Codex 学习资料
+- `.codex/skills/`：项目级 Codex Skills
+- `scripts/`：环境辅助脚本
 
-2. [prompt_agent_skill_tutorial.md](https://github.com/HTY679/dachuang/blob/main/prompt_agent_skill_tutorial.md)  
-   重点解释 Prompt、Agent、Skill 的区别与关系，并给出项目场景下可直接复用的写法。
+## 当前软件 MVP
 
-3. [codex_setup_tutorial.md](https://github.com/HTY679/dachuang/blob/main/codex_setup_tutorial.md)  
-   实操配置指南：Windows/macOS、VS Code 插件、WSL 建议路径、首次任务建议。
+仓库已新增 `app/`，包含《基于 RISC-V 指令集可视化教学的桌面软件》的第一版无依赖 MVP。
 
-4. [codex_skill_tutorial.md](https://github.com/HTY679/dachuang/blob/main/codex_skill_tutorial.md)  
-   Skill 专题：如何创建 Skill、如何调用、推荐的 5 类高频 Skill、常见误区。
+双击启动：
 
-## 推荐阅读顺序
+```text
+启动RISC-V可视化教学软件.bat
+```
 
-1. `codex_tutorial.md`（先建立全局框架）  
-2. `prompt_agent_skill_tutorial.md`（理解核心方法论）  
-3. `codex_setup_tutorial.md`（完成本地环境配置）  
-4. `codex_skill_tutorial.md`（进入可复用工作流阶段）
+运行：
 
-## 阅读目标
+```powershell
+npm.cmd start
+```
 
-读完后，你应该能做到：
-- 能写出结构清晰、边界明确的 Prompt
-- 能把 Codex 当作 Agent 使用（先规划再执行）
-- 能在 VS Code / 本地环境稳定运行 Codex
-- 能为团队沉淀基础 Skill（如 Debug / 前端生成 / API / 项目讲解）
+然后打开：
 
-## 团队使用建议
+```text
+http://localhost:4173
+```
 
-- 先统一文档阅读顺序，再开始实操
-- 每个成员先完成 1 次“项目结构分析 + 最小功能开发 + 最小修复”
-- 在仓库中持续沉淀 `.codex/skills/`，形成团队复用能力
+验证核心逻辑：
 
-## 备注
+```powershell
+npm.cmd run check
+npm.cmd test
+```
 
-以上四份文档适合大创项目的快速落地与团队协作训练。  
-建议按“理解 → 配置 → 实战 → 沉淀 Skill”的路径推进。
+## 重要文档
+
+- [项目进度与结构总结](docs/项目进度与结构总结.md)
+- [理论产品说明书大纲](docs/《基于%20RISC-V%20指令集可视化教学的桌面软件》理论产品说明书大纲.md)
+- [开发步骤指南](docs/RISC-V可视化教学桌面软件_开发步骤指南.md)
+- [WSL2 环境搭建执行清单](docs/WSL2_环境搭建_执行清单.md)
+- [小组编程与 AI 阶段技能清单](docs/小组编程与AI阶段技能清单.md)
+
+## Codex 学习资料
+
+推荐阅读顺序：
+
+1. [Codex 基础教程](docs/codex_tutorial.md)
+2. [Prompt / Agent / Skill 教程](docs/prompt_agent_skill_tutorial.md)
+3. [Codex 基础配置教程](docs/codex_setup_tutorial.md)
+4. [Codex Skill 简易教程](docs/codex_skill_tutorial.md)

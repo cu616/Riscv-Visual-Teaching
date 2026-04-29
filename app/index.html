@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RISC-V 指令集可视化教学软件</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">RISC-V Visual Teaching Studio</p>
+          <h1>RISC-V 指令集可视化教学软件</h1>
+        </div>
+        <nav class="tabs" aria-label="页面导航">
+          <button class="tab active" data-view="workspace">工作台</button>
+          <button class="tab" data-view="examples">示例案例</button>
+          <button class="tab" data-view="harmony">OpenHarmony 概念</button>
+        </nav>
+      </header>
+
+      <main>
+        <section id="workspace" class="view active">
+          <section class="toolbar" aria-label="执行控制">
+            <button id="stepBtn" class="primary">单步执行</button>
+            <button id="autoBtn">自动执行</button>
+            <button id="pauseBtn">暂停</button>
+            <button id="resetBtn">重置</button>
+            <button id="clearProgramBtn">清空程序</button>
+            <span id="runState" class="status-pill">就绪</span>
+          </section>
+
+          <section class="workspace-grid">
+            <aside class="panel toolbox-panel pane">
+              <div class="panel-heading">
+                <h2>指令积木</h2>
+                <span>Blockly 风格</span>
+              </div>
+              <div class="block-palette">
+                <button class="block-chip arithmetic" draggable="true" data-opcode="addi">addi</button>
+                <button class="block-chip arithmetic" draggable="true" data-opcode="add">add</button>
+                <button class="block-chip arithmetic" draggable="true" data-opcode="sub">sub</button>
+                <button class="block-chip memory" draggable="true" data-opcode="lw">lw</button>
+                <button class="block-chip memory" draggable="true" data-opcode="sw">sw</button>
+                <button class="block-chip branch" draggable="true" data-opcode="beq">beq</button>
+              </div>
+              <h3>小积木素材</h3>
+              <div class="operand-guide">
+                <div><span class="guide-dot register"></span>浅蓝：寄存器小积木，用作 rd / rs1 / rs2</div>
+                <div><span class="guide-dot immediate"></span>浅黄：立即数或地址偏移，可键盘输入</div>
+                <div><span class="guide-dot label"></span>浅绿：标签小积木，可贴到任意指令上，也可被分支引用</div>
+                <div><span class="guide-dot instruction"></span>蓝/绿/橙：算术、访存、分支指令大积木</div>
+              </div>
+              <label class="custom-imm-control">
+                寄存器
+                <select id="customRegisterInput"></select>
+              </label>
+              <label class="custom-imm-control">
+                自定义立即数
+                <input id="customImmInput" type="number" value="8" />
+              </label>
+              <label class="custom-imm-control">
+                标签名
+                <input id="customLabelInput" type="text" value="loop" />
+              </label>
+              <div class="operand-palette" id="operandPalette"></div>
+              <p class="hint">
+                把指令大积木拖入编辑区，再把小积木贴到对应接口。立即数槽位可直接键盘输入。
+              </p>
+            </aside>
+
+            <div class="resize-handle" data-resize="toolbox" title="拖动调整素材区宽度"></div>
+
+            <section class="panel editor-panel pane">
+              <div class="panel-heading">
+                <h2>指令编辑区</h2>
+                <span>拖拽拼接 RV32I 教学指令</span>
+              </div>
+              <div id="programCanvas" class="program-canvas">
+                <div id="programDropZone" class="program-drop-zone">
+                  把左侧指令大积木拖到这里，可上下拖动排序
+                </div>
+                <div id="instructionList" class="instruction-list"></div>
+              </div>
+            </section>
+
+            <div class="resize-handle" data-resize="editor" title="拖动调整编辑区宽度"></div>
+
+            <aside class="right-stack pane">
+              <aside class="panel state-panel">
+                <div class="panel-heading">
+                  <h2>机器状态</h2>
+                  <span>寄存器 / 内存 / PC</span>
+                </div>
+                <div class="pc-box">
+                  <span>PC</span>
+                  <strong id="pcValue">0</strong>
+                </div>
+                <h3>寄存器</h3>
+                <div id="registerGrid" class="register-grid"></div>
+                <h3>内存</h3>
+                <div id="memoryGrid" class="memory-grid"></div>
+              </aside>
+
+              <section class="panel visual-panel">
+                <div class="panel-heading">
+                  <h2>数据流可视化</h2>
+                  <span id="currentInstructionLabel">等待执行</span>
+                </div>
+                <div class="datapath-stage">
+                  <svg class="stage-lines" viewBox="0 0 980 430" preserveAspectRatio="none" aria-hidden="true">
+                    <path id="busFetch" d="M95 72 C220 72 250 72 350 72" />
+                    <path id="busRs1" d="M210 188 C300 188 345 208 422 222" />
+                    <path id="busRs2" d="M210 272 C300 272 345 246 422 238" />
+                    <path id="busAluMem" d="M548 230 C620 230 655 180 724 176" />
+                    <path id="busAluWb" d="M548 244 C620 278 690 318 790 326" />
+                    <path id="busMemWb" d="M808 188 C850 220 850 278 806 314" />
+                    <path id="busPc" d="M520 84 C650 78 730 98 850 118" />
+                  </svg>
+                  <div id="pcNode" class="stage-node pc-node">
+                    <span>PC</span>
+                    <strong>0</strong>
+                  </div>
+                  <div id="instructionNode" class="stage-node instruction-node">
+                    <span>Instruction</span>
+                    <strong>等待执行</strong>
+                  </div>
+                  <div id="registerFileNode" class="stage-node register-file-node">
+                    <span>Register File</span>
+                    <strong>rs1 / rs2</strong>
+                  </div>
+                  <div id="rs1Node" class="stage-chip rs1-chip">rs1</div>
+                  <div id="rs2Node" class="stage-chip rs2-chip">rs2 / imm</div>
+                  <div id="aluNode" class="stage-node alu-stage-node">
+                    <span>ALU</span>
+                    <strong>运算</strong>
+                  </div>
+                  <div id="memoryNode" class="stage-node memory-stage-node">
+                    <span>Memory</span>
+                    <strong>load / store</strong>
+                  </div>
+                  <div id="writebackNode" class="stage-node writeback-node">
+                    <span>Write Back</span>
+                    <strong>rd</strong>
+                  </div>
+                  <div id="branchNode" class="stage-node branch-node">
+                    <span>Branch</span>
+                    <strong>PC 更新</strong>
+                  </div>
+                </div>
+                <p id="stepExplanation" class="explanation">
+                  点击“单步执行”，观察寄存器、ALU、内存和 PC 的变化。
+                </p>
+              </section>
+
+            </aside>
+
+            <section class="panel preview-panel">
+              <div class="panel-heading">
+                <h2>汇编预览</h2>
+                <span>结构化指令</span>
+              </div>
+              <pre id="assemblyPreview" class="code-preview"></pre>
+              <pre id="jsonPreview" class="json-preview"></pre>
+            </section>
+
+            <section class="panel log-panel">
+              <div class="panel-heading">
+                <h2>执行日志与教学反馈</h2>
+                <span>为什么结果会变</span>
+              </div>
+              <div id="errorBox" class="error-box" hidden></div>
+              <ol id="executionLog" class="execution-log"></ol>
+            </section>
+          </section>
+        </section>
+
+        <section id="examples" class="view">
+          <div class="page-panel">
+            <h2>示例案例</h2>
+            <p>选择一个预置案例，一键加载到工作台演示。</p>
+            <div id="exampleList" class="example-list"></div>
+          </div>
+        </section>
+
+        <section id="harmony" class="view">
+          <div class="page-panel harmony-page">
+            <h2>OpenHarmony 概念可视化</h2>
+            <p>
+              本页面只展示分布式软总线和模块协同思想，不做真实系统通信，避免偏离 RISC-V 教学主线。
+            </p>
+            <div class="harmony-diagram">
+              <div class="harmony-node">教学主机</div>
+              <div class="harmony-link">分布式软总线概念</div>
+              <div class="harmony-node">平板展示</div>
+              <div class="harmony-node">传感器模块</div>
+              <div class="harmony-link">状态同步</div>
+              <div class="harmony-node">课堂大屏</div>
+            </div>
+            <ul class="concept-list">
+              <li>多设备协同可以扩展未来课堂演示场景。</li>
+              <li>当前 MVP 只保留概念展示页，不引入真实通信复杂度。</li>
+              <li>核心教学价值仍是 RISC-V 指令执行过程可视化。</li>
+            </ul>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="./src/instructions.js"></script>
+    <script src="./src/simulator.js"></script>
+    <script src="./src/app.js"></script>
+  </body>
+</html>
