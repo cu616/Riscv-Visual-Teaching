@@ -28,6 +28,7 @@
             <button id="pauseBtn">暂停</button>
             <button id="resetBtn">重置</button>
             <button id="clearProgramBtn">清空程序</button>
+            <button id="demoModeBtn">演示模式</button>
             <span id="runState" class="status-pill">就绪</span>
           </section>
 
@@ -41,9 +42,30 @@
                 <button class="block-chip arithmetic" draggable="true" data-opcode="addi">addi</button>
                 <button class="block-chip arithmetic" draggable="true" data-opcode="add">add</button>
                 <button class="block-chip arithmetic" draggable="true" data-opcode="sub">sub</button>
+                <button class="block-chip logic" draggable="true" data-opcode="and">and</button>
+                <button class="block-chip logic" draggable="true" data-opcode="or">or</button>
+                <button class="block-chip logic" draggable="true" data-opcode="xor">xor</button>
+                <button class="block-chip logic" draggable="true" data-opcode="andi">andi</button>
+                <button class="block-chip logic" draggable="true" data-opcode="ori">ori</button>
+                <button class="block-chip logic" draggable="true" data-opcode="xori">xori</button>
+                <button class="block-chip shift" draggable="true" data-opcode="sll">sll</button>
+                <button class="block-chip shift" draggable="true" data-opcode="srl">srl</button>
+                <button class="block-chip shift" draggable="true" data-opcode="sra">sra</button>
+                <button class="block-chip shift" draggable="true" data-opcode="slli">slli</button>
+                <button class="block-chip shift" draggable="true" data-opcode="srli">srli</button>
+                <button class="block-chip shift" draggable="true" data-opcode="srai">srai</button>
                 <button class="block-chip memory" draggable="true" data-opcode="lw">lw</button>
                 <button class="block-chip memory" draggable="true" data-opcode="sw">sw</button>
                 <button class="block-chip branch" draggable="true" data-opcode="beq">beq</button>
+                <button class="block-chip branch" draggable="true" data-opcode="bne">bne</button>
+                <button class="block-chip branch" draggable="true" data-opcode="blt">blt</button>
+                <button class="block-chip branch" draggable="true" data-opcode="bge">bge</button>
+                <button class="block-chip branch" draggable="true" data-opcode="bltu">bltu</button>
+                <button class="block-chip branch" draggable="true" data-opcode="bgeu">bgeu</button>
+                <button class="block-chip branch" draggable="true" data-opcode="bltz">bltz</button>
+                <button class="block-chip jump" draggable="true" data-opcode="jal">jal</button>
+                <button class="block-chip jump" draggable="true" data-opcode="jalr">jalr</button>
+                <button class="block-chip jump" draggable="true" data-opcode="j">j</button>
               </div>
               <h3>小积木素材</h3>
               <div class="operand-guide">
@@ -96,6 +118,11 @@
                 <div class="pc-box">
                   <span>PC</span>
                   <strong id="pcValue">0</strong>
+                </div>
+                <div class="base-control" aria-label="机器状态进制显示">
+                  <button class="base-btn active" data-base="dec">十进制</button>
+                  <button class="base-btn" data-base="bin">二进制</button>
+                  <button class="base-btn" data-base="hex">十六进制</button>
                 </div>
                 <h3>寄存器</h3>
                 <div id="registerGrid" class="register-grid"></div>

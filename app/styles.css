@@ -205,12 +205,24 @@ h3 {
   background: #206bc4;
 }
 
+.block-chip.logic {
+  background: #635bff;
+}
+
+.block-chip.shift {
+  background: #7c3aed;
+}
+
 .block-chip.memory {
   background: #0f8f6f;
 }
 
 .block-chip.branch {
   background: #ad6b00;
+}
+
+.block-chip.jump {
+  background: #c2410c;
 }
 
 .operand-palette {
@@ -361,6 +373,29 @@ h3 {
   color: var(--primary-dark);
 }
 
+.sort-guide {
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  height: 0;
+  border-top: 3px solid rgba(13, 110, 253, 0.7);
+  pointer-events: none;
+  z-index: 5;
+}
+
+.sort-guide::after {
+  content: "按高度排序";
+  position: absolute;
+  right: 8px;
+  top: -22px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: #fff;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
 .instruction-card {
   position: relative;
   width: 300px;
@@ -395,6 +430,15 @@ h3 {
   background: #fff7e8;
 }
 
+.instruction-card.logic-block,
+.instruction-card.shift-block {
+  background: #f3f0ff;
+}
+
+.instruction-card.jump-block {
+  background: #fff1e8;
+}
+
 .instruction-block-head {
   display: flex;
   align-items: center;
@@ -419,6 +463,24 @@ h3 {
   border-color: #d69f4c;
   background: #ad6b00;
   box-shadow: 0 5px 0 rgba(173, 107, 0, 0.22);
+}
+
+.logic-block .instruction-block-head {
+  border-color: #9b93ff;
+  background: #635bff;
+  box-shadow: 0 5px 0 rgba(99, 91, 255, 0.2);
+}
+
+.shift-block .instruction-block-head {
+  border-color: #b794f4;
+  background: #7c3aed;
+  box-shadow: 0 5px 0 rgba(124, 58, 237, 0.2);
+}
+
+.jump-block .instruction-block-head {
+  border-color: #fb923c;
+  background: #c2410c;
+  box-shadow: 0 5px 0 rgba(194, 65, 12, 0.2);
 }
 
 .instruction-index {
@@ -506,6 +568,19 @@ body.dragging-label .label-dock,
   font-size: 12px;
 }
 
+.slot.address-slot {
+  position: relative;
+}
+
+.slot.address-slot + .slot.address-slot::before {
+  content: "+";
+  position: absolute;
+  left: -8px;
+  top: 8px;
+  color: var(--green);
+  font-weight: 900;
+}
+
 .slot.accepting {
   outline: 2px dashed var(--primary);
   outline-offset: 2px;
@@ -559,6 +634,13 @@ body.dragging-label .label-dock,
   font-size: 11px;
   text-align: center;
   background: rgba(255, 255, 255, 0.35);
+  opacity: 0;
+}
+
+body.dragging-operand .empty-slot,
+.slot.accepting .empty-slot,
+.slot.invalid-drop .empty-slot {
+  opacity: 1;
 }
 
 .delete-btn {
@@ -571,6 +653,28 @@ body.dragging-label .label-dock,
 
 .preview-panel {
   min-height: 260px;
+}
+
+body.demo-mode .preview-panel .json-preview {
+  display: none;
+}
+
+body.demo-mode .workspace-grid {
+  --editor-width: minmax(480px, 1.25fr);
+  --right-width: minmax(500px, 1.15fr);
+}
+
+body.demo-mode .instruction-card {
+  transform: scale(1.08);
+  transform-origin: left top;
+}
+
+body.demo-mode .datapath-stage {
+  height: 500px;
+}
+
+body.demo-mode .execution-log {
+  max-height: 300px;
 }
 
 .code-preview,
@@ -776,6 +880,26 @@ body.dragging-label .label-dock,
   padding: 10px 12px;
 }
 
+.base-control {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin: 10px 0 4px;
+}
+
+.base-btn {
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.base-btn.active {
+  border-color: var(--primary);
+  background: var(--blue-soft);
+  color: var(--primary-dark);
+  font-weight: 800;
+}
+
 .register-grid,
 .memory-grid {
   display: grid;
@@ -790,17 +914,33 @@ body.dragging-label .label-dock,
   padding: 6px;
   background: #fff;
   font-size: 12px;
+  min-width: 0;
 }
 
 .reg-cell strong,
 .mem-cell strong {
   display: block;
-  font-size: 14px;
+  overflow-wrap: anywhere;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.25;
 }
 
 .changed {
   background: var(--amber-soft);
   border-color: var(--amber);
+}
+
+.block-warning {
+  display: inline-block;
+  margin: 6px 0 0 38px;
+  border: 1px solid #f2c779;
+  border-radius: 6px;
+  background: var(--amber-soft);
+  color: #7a4b00;
+  padding: 4px 7px;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .log-panel {

@@ -1,6 +1,7 @@
 (function () {
   const {
     REGISTERS,
+    FIELD_KINDS,
     INSTRUCTION_DEFS,
     EXAMPLES,
     createDefaultInstruction,
@@ -16,6 +17,7 @@
     assemblyPreview: document.getElementById("assemblyPreview"),
     jsonPreview: document.getElementById("jsonPreview"),
     clearProgramBtn: document.getElementById("clearProgramBtn"),
+    demoModeBtn: document.getElementById("demoModeBtn"),
     programCanvas: document.getElementById("programCanvas"),
     programDropZone: document.getElementById("programDropZone"),
     customRegisterInput: document.getElementById("customRegisterInput"),
@@ -26,6 +28,7 @@
     pauseBtn: document.getElementById("pauseBtn"),
     resetBtn: document.getElementById("resetBtn"),
     runState: document.getElementById("runState"),
+    baseButtons: document.querySelectorAll(".base-btn"),
     pcValue: document.getElementById("pcValue"),
     registerGrid: document.getElementById("registerGrid"),
     memoryGrid: document.getElementById("memoryGrid"),
@@ -67,6 +70,8 @@
     changedMemoryAddresses: [],
     animationTimers: [],
     timer: null
+    ,
+    displayBase: "dec"
   };
 
   function init() {
@@ -87,12 +92,16 @@
     });
 
     dom.clearProgramBtn.addEventListener("click", clearProgram);
+    dom.demoModeBtn.addEventListener("click", toggleDemoMode);
     dom.customImmInput.addEventListener("input", renderOperandPalette);
     dom.customRegisterInput.addEventListener("change", renderOperandPalette);
     dom.customLabelInput.addEventListener("input", renderOperandPalette);
     dom.stepBtn.addEventListener("click", stepProgram);
     dom.autoBtn.addEventListener("click", startAutoRun);
     dom.pauseBtn.addEventListener("click", pauseAutoRun);
+    dom.baseButtons.forEach((button) => {
+      button.addEventListener("click", () => setDisplayBase(button.dataset.base));
+    });
     document.querySelectorAll(".block-chip").forEach((chip) => {
       chip.addEventListener("dragstart", (event) => {
         event.dataTransfer.setData("application/json", JSON.stringify({ kind: "instruction", opcode: chip.dataset.opcode }));
@@ -197,7 +206,7 @@
   function updateInstruction(id, field, value) {
     app.rawInstructions = app.rawInstructions.map((instruction) => {
       if (instruction.id !== id) return instruction;
-      const updated = { ...instruction, [field]: field === "imm" ? Number(value) : value };
+      const updated = { ...instruction, [field]: FIELD_KINDS[field] === "immediate" ? Number(value) : value };
       if (field === "opcode") {
         return { ...createDefaultInstruction(value, { x: instruction.x, y: instruction.y }), id };
       }
@@ -211,6 +220,12 @@
     app.rawInstructions = app.rawInstructions.filter((instruction) => instruction.id !== id);
     resetMachine(false);
     renderAll();
+  }
+
+  function setDisplayBase(base) {
+    app.displayBase = base;
+    dom.baseButtons.forEach((button) => button.classList.toggle("active", button.dataset.base === base));
+    renderState();
   }
 
   function clearProgram() {
@@ -240,7 +255,7 @@
     orderedInstructions().forEach((instruction, index) => {
       const def = INSTRUCTION_DEFS[instruction.opcode] || INSTRUCTION_DEFS.addi;
       const card = document.createElement("article");
-      card.className = `instruction-card ${def.color === "memory" ? "memory-block" : ""} ${def.color === "branch" ? "branch-block" : ""}`;
+      card.className = `instruction-card ${def.color}-block`;
       card.style.position = "absolute";
       card.style.left = `${instruction.x ?? 36}px`;
       card.style.top = `${instruction.y ?? 96}px`;
@@ -255,6 +270,7 @@
           <button class="delete-btn" title="删除指令">×</button>
         </div>
         <div class="operand-rail">${renderSlots(instruction, def)}</div>
+        ${renderInstructionWarning(instruction)}
       `;
       bindBlockDrag(card, instruction);
       bindSlots(card, instruction, def);
@@ -262,6 +278,12 @@
       card.querySelector(".delete-btn").addEventListener("click", () => deleteInstruction(instruction.id));
       dom.instructionList.appendChild(card);
     });
+  }
+
+  function renderInstructionWarning(instruction) {
+    const writesRd = ["add", "sub", "addi", "and", "or", "xor", "andi", "ori", "xori", "sll", "srl", "sra", "slli", "srli", "srai", "lw", "jal", "jalr"].includes(instruction.opcode);
+    if (!writesRd || instruction.rd !== "x0") return "";
+    return `<div class="block-warning">x0 是恒零寄存器，写入结果会被忽略。</div>`;
   }
 
   function moveInstruction(id, x, y) {
@@ -285,6 +307,7 @@
         y: instruction.y ?? 96
       };
       card.classList.add("dragging");
+      showSortGuide(instruction.y ?? 96);
     });
     card.addEventListener("pointermove", (event) => {
       if (!start) return;
@@ -293,17 +316,40 @@
       const y = Math.max(82, start.y + event.clientY - start.pointerY);
       card.style.left = `${x}px`;
       card.style.top = `${y}px`;
+      showSortGuide(y);
       autoScrollCanvas(event.clientY);
     });
     card.addEventListener("pointerup", (event) => {
       if (!start) return;
       card.releasePointerCapture(event.pointerId);
-      const x = Number.parseFloat(card.style.left);
-      const y = Number.parseFloat(card.style.top);
+      const x = snapToGrid(Number.parseFloat(card.style.left), 12);
+      const y = snapToGrid(Number.parseFloat(card.style.top), 12);
       start = null;
       card.classList.remove("dragging");
+      hideSortGuide();
       moveInstruction(instruction.id, x, y);
     });
+  }
+
+  function snapToGrid(value, grid) {
+    return Math.round(value / grid) * grid;
+  }
+
+  function showSortGuide(y) {
+    let guide = document.getElementById("sortGuide");
+    if (!guide) {
+      guide = document.createElement("div");
+      guide.id = "sortGuide";
+      guide.className = "sort-guide";
+      dom.programCanvas.appendChild(guide);
+    }
+    guide.style.top = `${Math.max(76, y + 96)}px`;
+    guide.hidden = false;
+  }
+
+  function hideSortGuide() {
+    const guide = document.getElementById("sortGuide");
+    if (guide) guide.hidden = true;
   }
 
   function autoScrollCanvas(clientY) {
@@ -325,9 +371,9 @@
     return def.fields
       .map((field) => {
         const value = instruction[field];
-        const kind = field === "imm" ? "immediate" : field === "label" ? "label" : "register";
+        const kind = FIELD_KINDS[field] || "register";
         return `
-          <div class="slot ${kind === "immediate" ? "editable-immediate-slot" : ""}" data-field="${field}" data-kind="${kind}">
+          <div class="slot ${kind === "immediate" ? "editable-immediate-slot" : ""} ${isAddressField(instruction.opcode, field) ? "address-slot" : ""}" data-field="${field}" data-kind="${kind}">
             <span class="slot-label">${field}</span>
             ${renderSlotValue(kind, value, field)}
           </div>
@@ -336,9 +382,13 @@
       .join("");
   }
 
+  function isAddressField(opcode, field) {
+    return (opcode === "lw" || opcode === "sw" || opcode === "jalr") && (field === "imm" || field === "rs1");
+  }
+
   function renderSlotValue(kind, value, field) {
     if (kind === "immediate") {
-      return `<input class="operand-input" type="number" data-field="${field}" value="${value ?? 0}" title="可直接输入立即数或地址偏移" />`;
+      return `<input class="operand-input" type="number" data-field="${field}" value="${value ?? 0}" title="可直接输入立即数、移位量或地址偏移" />`;
     }
     if (value === undefined || value === "") {
       return `<span class="empty-slot">拖入${slotName(kind)}积木</span>`;
@@ -409,9 +459,18 @@
         event.dataTransfer.setData("application/json", JSON.stringify({ kind: chip.dataset.kind, value: chip.dataset.value }));
         event.dataTransfer.effectAllowed = "copy";
         document.body.classList.toggle("dragging-label", chip.dataset.kind === "label");
+        document.body.classList.toggle("dragging-operand", chip.dataset.kind !== "label");
       });
-      chip.addEventListener("dragend", () => document.body.classList.remove("dragging-label"));
+      chip.addEventListener("dragend", () => {
+        document.body.classList.remove("dragging-label");
+        document.body.classList.remove("dragging-operand");
+      });
     });
+  }
+
+  function toggleDemoMode() {
+    document.body.classList.toggle("demo-mode");
+    dom.demoModeBtn.classList.toggle("primary", document.body.classList.contains("demo-mode"));
   }
 
   function renderOperandChip(kind, value, draggable) {
@@ -463,17 +522,32 @@
   }
 
   function renderState() {
-    dom.pcValue.textContent = app.state.pc;
+    dom.pcValue.textContent = formatValue(app.state.pc);
     dom.registerGrid.innerHTML = REGISTERS.slice(0, 16)
-      .map((name) => `<div class="reg-cell ${app.changedRegisters.includes(name) ? "changed" : ""}"><span>${name}</span><strong>${app.state.registers[name]}</strong></div>`)
+      .map((name) => `<div class="reg-cell ${app.changedRegisters.includes(name) ? "changed" : ""}"><span>${name}</span><strong>${formatValue(app.state.registers[name])}</strong></div>`)
       .join("");
 
     const addresses = Object.keys(app.state.memory)
       .map(Number)
       .sort((a, b) => a - b);
     dom.memoryGrid.innerHTML = addresses
-      .map((address) => `<div class="mem-cell ${app.changedMemoryAddresses.includes(address) ? "changed" : ""}"><span>${address}</span><strong>${app.state.memory[address]}</strong></div>`)
+      .map((address) => `<div class="mem-cell ${app.changedMemoryAddresses.includes(address) ? "changed" : ""}"><span>@${formatValue(address)}</span><strong>${formatValue(app.state.memory[address])}</strong></div>`)
       .join("");
+  }
+
+  function formatValue(value) {
+    const normalized = Number(value) || 0;
+    if (app.displayBase === "hex") {
+      return `0x${toUnsigned32(normalized).toString(16).toUpperCase().padStart(8, "0")}`;
+    }
+    if (app.displayBase === "bin") {
+      return `0b${toUnsigned32(normalized).toString(2).padStart(32, "0")}`;
+    }
+    return String(normalized);
+  }
+
+  function toUnsigned32(value) {
+    return value >>> 0;
   }
 
   function renderLog() {
@@ -519,11 +593,11 @@
       document.querySelector("#instructionNode strong").textContent = formatAssembly(instruction);
       document.querySelector("#pcNode strong").textContent = app.state.pc;
       document.getElementById("rs1Node").textContent = instruction.rs1 || "rs1";
-      document.getElementById("rs2Node").textContent = instruction.rs2 || (instruction.imm !== undefined ? `imm ${instruction.imm}` : "rs2 / imm");
+      document.getElementById("rs2Node").textContent = operandTwoLabel(instruction);
       document.querySelector("#writebackNode strong").textContent = instruction.rd || (instruction.opcode === "sw" ? "memory" : "rd");
       document.querySelector("#aluNode strong").textContent = result.animationPlan.find((item) => typeof item === "string" && item.includes("=")) || aluLabel(instruction);
       document.querySelector("#memoryNode strong").textContent = memoryLabel(instruction);
-      document.querySelector("#branchNode strong").textContent = instruction.opcode === "beq" ? "比较并更新 PC" : "PC + 1";
+      document.querySelector("#branchNode strong").textContent = branchLabel(instruction);
       playAnimationFrames(result);
     }
   }
@@ -571,11 +645,37 @@
       ];
     }
 
-    if (instruction.opcode === "beq") {
+    if (["beq", "bne", "blt", "bge", "bltu", "bgeu", "bltz"].includes(instruction.opcode)) {
       return [
-        { ids: ["pcNode", "instructionNode", "busFetch"], text: "取出分支指令，准备比较两个寄存器。" },
-        { ids: ["registerFileNode", "rs1Node", "rs2Node", "busRs1", "busRs2"], text: `读取 ${instruction.rs1} 和 ${instruction.rs2}。` },
-        { ids: ["aluNode", "branchNode", "busPc"], text: "比较两个值是否相等，并决定 PC 是否跳转。" }
+        { ids: ["pcNode", "instructionNode", "busFetch"], text: "取出分支指令，准备比较寄存器并决定 PC 是否跳转。" },
+        { ids: ["registerFileNode", "rs1Node", "rs2Node", "busRs1", "busRs2"], text: instruction.opcode === "bltz" ? `读取 ${instruction.rs1}，并与 x0/0 比较。` : `读取 ${instruction.rs1} 和 ${instruction.rs2}。` },
+        { ids: ["aluNode", "branchNode", "busPc"], text: "比较条件进入分支判断单元，条件成立时 PC 改为目标标签。" }
+      ];
+    }
+
+    if (["jal", "jalr", "j"].includes(instruction.opcode)) {
+      return [
+        { ids: ["pcNode", "instructionNode", "busFetch"], text: "取出跳转指令，当前 PC 不再只做顺序加一。" },
+        { ids: ["aluNode", "branchNode", "busPc"], text: instruction.opcode === "jalr" ? "用寄存器基址加偏移计算跳转目标。" : "根据标签定位跳转目标，并把 PC 指向目标指令。" },
+        { ids: ["writebackNode", "busAluWb"], text: instruction.opcode === "j" || instruction.rd === "x0" ? "rd 为 x0 时返回地址被忽略，形成无条件跳转效果。" : `把返回位置写入 ${instruction.rd}，便于之后返回。` }
+      ];
+    }
+
+    if (["and", "or", "xor", "andi", "ori", "xori"].includes(instruction.opcode)) {
+      return [
+        { ids: ["pcNode", "instructionNode", "busFetch"], text: "取出逻辑运算指令，准备观察位级变化。" },
+        { ids: ["registerFileNode", "rs1Node", "rs2Node", "busRs1", "busRs2"], text: instruction.imm !== undefined ? `读取 ${instruction.rs1}，并取立即数 ${instruction.imm} 作为掩码。` : `读取 ${instruction.rs1} 和 ${instruction.rs2} 两个位模式。` },
+        { ids: ["aluNode", "busRs1", "busRs2"], text: "ALU 不是做十进制算术，而是逐位执行 AND / OR / XOR。" },
+        { ids: ["writebackNode", "busAluWb"], text: `把位运算结果写回目标寄存器 ${instruction.rd}。` }
+      ];
+    }
+
+    if (["sll", "srl", "sra", "slli", "srli", "srai"].includes(instruction.opcode)) {
+      return [
+        { ids: ["pcNode", "instructionNode", "busFetch"], text: "取出移位指令，适合切到二进制显示观察位移动。" },
+        { ids: ["registerFileNode", "rs1Node", "rs2Node", "busRs1", "busRs2"], text: instruction.shamt !== undefined ? `读取 ${instruction.rs1}，移位量 shamt=${instruction.shamt}。` : `读取 ${instruction.rs1}，并使用 ${instruction.rs2} 的低 5 位作为移位量。` },
+        { ids: ["aluNode", "busRs1", "busRs2"], text: "ALU 执行左移、逻辑右移或算术右移，重点观察高位如何补齐。" },
+        { ids: ["writebackNode", "busAluWb"], text: `把移位结果写回目标寄存器 ${instruction.rd}。` }
       ];
     }
 
@@ -594,7 +694,10 @@
 
   function aluLabel(instruction) {
     if (instruction.opcode === "lw" || instruction.opcode === "sw") return "地址 = rs1 + offset";
-    if (instruction.opcode === "beq") return "rs1 == rs2 ?";
+    if (["beq", "bne", "blt", "bge", "bltu", "bgeu", "bltz"].includes(instruction.opcode)) return "条件比较";
+    if (["jal", "jalr", "j"].includes(instruction.opcode)) return "PC 目标";
+    if (["and", "or", "xor", "andi", "ori", "xori"].includes(instruction.opcode)) return "按位逻辑";
+    if (["sll", "srl", "sra", "slli", "srli", "srai"].includes(instruction.opcode)) return "位移运算";
     return "算术运算";
   }
 
@@ -602,6 +705,20 @@
     if (instruction.opcode === "lw") return "读取内存";
     if (instruction.opcode === "sw") return "写入内存";
     return "本步不访存";
+  }
+
+  function branchLabel(instruction) {
+    if (["beq", "bne", "blt", "bge", "bltu", "bgeu", "bltz"].includes(instruction.opcode)) return "比较并更新 PC";
+    if (["jal", "jalr", "j"].includes(instruction.opcode)) return "跳转目标";
+    return "PC + 1";
+  }
+
+  function operandTwoLabel(instruction) {
+    if (instruction.rs2) return instruction.rs2;
+    if (instruction.shamt !== undefined) return `shamt ${instruction.shamt}`;
+    if (instruction.imm !== undefined) return `imm ${instruction.imm}`;
+    if (instruction.label) return instruction.labelName || instruction.label;
+    return "rs2 / imm";
   }
 
   function resetMachine(render = true) {
