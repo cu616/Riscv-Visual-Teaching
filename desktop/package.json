@@ -1,0 +1,65 @@
+{
+  "name": "riscv-visual-teaching-desktop-app",
+  "version": "0.4.0-alpha.0",
+  "private": true,
+  "description": "Electron + React + TypeScript + Blockly migration prototype for RISC-V visual teaching",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "dev:electron": "concurrently \"npm:dev\" \"wait-on http://127.0.0.1:5173 && electron .\"",
+    "build": "tsc -b && vite build && tsc -p tsconfig.electron.json",
+    "repair:binaries": "powershell -ExecutionPolicy Bypass -File ./scripts/repair-binaries.ps1",
+    "package:win": "npm run build && electron-builder --win --dir",
+    "dist:win": "npm run build && electron-builder --win nsis",
+    "preview": "vite preview --host 127.0.0.1",
+    "check": "tsc --noEmit",
+    "test:core": "tsx src/tests/core.test.ts"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^4.4.0",
+    "blockly": "^11.2.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "vite": "^5.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.12",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "app-builder-bin": "^4.2.0",
+    "concurrently": "^8.2.2",
+    "electron": "^30.0.9",
+    "electron-builder": "^24.13.3",
+    "tsx": "^4.15.7",
+    "typescript": "^5.4.5",
+    "wait-on": "^7.2.0"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-win32-x64-msvc": "^4.60.2"
+  },
+  "build": {
+    "appId": "cn.dachuang.riscv.visual-teaching",
+    "productName": "RISC-V可视化教学软件",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "signAndEditExecutable": false,
+      "target": [
+        "dir",
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}

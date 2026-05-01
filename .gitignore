@@ -1,3 +1,11 @@
 generated_skills/
 node_modules/
+desktop/node_modules/
+desktop/dist/
+desktop/dist-electron/
+desktop/release/
+desktop/.cache/
+desktop/*.tsbuildinfo
+desktop/vite.config.js
+desktop/vite.config.d.ts
 .DS_Store

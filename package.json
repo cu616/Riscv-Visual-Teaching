@@ -6,6 +6,11 @@
   "scripts": {
     "start": "node ./app/server.mjs",
     "check": "node --check ./app/src/instructions.js && node --check ./app/src/simulator.js && node --check ./app/src/app.js && node --check ./app/server.mjs && node --check ./app/test-core.mjs",
-    "test": "node ./app/test-core.mjs"
+    "test": "node ./app/test-core.mjs",
+    "desktop:install": "npm --prefix ./desktop install",
+    "desktop:dev": "npm --prefix ./desktop run dev",
+    "desktop:electron": "npm --prefix ./desktop run dev:electron",
+    "desktop:check": "npm --prefix ./desktop run check",
+    "desktop:test": "npm --prefix ./desktop run test:core"
   }
 }

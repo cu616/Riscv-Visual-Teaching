@@ -13,7 +13,7 @@ for (const file of ["./app/src/instructions.js", "./app/src/simulator.js"]) {
   vm.runInContext(readFileSync(file, "utf8"), context, { filename: file });
 }
 
-const { parseProgram, formatAssembly } = context.window.RiscVTeaching;
+const { EXAMPLES, parseProgram, formatAssembly } = context.window.RiscVTeaching;
 const { createInitialState, executeInstruction } = context.window.RiscVSimulator;
 
 function assert(condition, message) {
@@ -142,5 +142,18 @@ assert(state.registers.x3 === 0, "bltu should not treat -1 as less than 1 in uns
 assert(state.registers.x4 === 6, "bgeu should jump to target");
 assert(state.registers.x5 === 7, "jalr should write return index");
 assert(state.registers.x6 === 123, "jalr should jump to rs1 + imm in teaching index model");
+
+for (const example of EXAMPLES) {
+  const parsedExample = parseProgram(example.instructions);
+  assert(parsedExample.errors.length === 0, `Example ${example.id} should parse: ${parsedExample.errors.join("; ")}`);
+  state = createInitialState();
+  let guard = 0;
+  while (!state.halted && guard < 40) {
+    const result = executeInstruction(state, parsedExample.instructions);
+    state = result.state;
+    guard += 1;
+  }
+  assert(state.halted, `Example ${example.id} should halt without an accidental loop`);
+}
 
 console.log("Core parser and simulator tests passed.");

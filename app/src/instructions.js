@@ -227,8 +227,33 @@
         { opcode: "addi", rd: "x1", rs1: "x0", imm: 12 },
         { opcode: "addi", rd: "x2", rs1: "x0", imm: 10 },
         { opcode: "and", rd: "x3", rs1: "x1", rs2: "x2" },
+        { opcode: "or", rd: "x6", rs1: "x1", rs2: "x2" },
         { opcode: "xor", rd: "x4", rs1: "x1", rs2: "x2" },
         { opcode: "slli", rd: "x5", rs1: "x3", shamt: 1 }
+      ]
+    },
+    {
+      id: "mask-immediate",
+      title: "掩码与位设置",
+      description: "用 andi/ori/xori 展示保留低位、设置标志位和翻转位模式。",
+      instructions: [
+        { opcode: "addi", rd: "x1", rs1: "x0", imm: 13 },
+        { opcode: "andi", rd: "x2", rs1: "x1", imm: 7 },
+        { opcode: "ori", rd: "x3", rs1: "x2", imm: 16 },
+        { opcode: "xori", rd: "x4", rs1: "x3", imm: 3 }
+      ]
+    },
+    {
+      id: "shift-family",
+      title: "三类移位对比",
+      description: "对比 sll、srl、sra 与立即数移位，适合讲低 5 位移位量和符号位。",
+      instructions: [
+        { opcode: "addi", rd: "x1", rs1: "x0", imm: -16 },
+        { opcode: "addi", rd: "x2", rs1: "x0", imm: 2 },
+        { opcode: "sll", rd: "x3", rs1: "x2", rs2: "x2" },
+        { opcode: "srl", rd: "x4", rs1: "x1", rs2: "x2" },
+        { opcode: "sra", rd: "x5", rs1: "x1", rs2: "x2" },
+        { opcode: "srli", rd: "x6", rs1: "x3", shamt: 1 }
       ]
     },
     {
@@ -255,6 +280,20 @@
       ]
     },
     {
+      id: "signed-unsigned-branch",
+      title: "有符号与无符号分支",
+      description: "用 blt 和 bgeu 对比 -1 在有符号/无符号比较中的不同含义。",
+      instructions: [
+        { opcode: "addi", rd: "x1", rs1: "x0", imm: -1 },
+        { opcode: "addi", rd: "x2", rs1: "x0", imm: 1 },
+        { opcode: "blt", rs1: "x1", rs2: "x2", label: "signedLess" },
+        { opcode: "addi", rd: "x3", rs1: "x0", imm: 99 },
+        { opcode: "bgeu", rs1: "x1", rs2: "x2", label: "unsignedGreater", labelTag: "signedLess" },
+        { opcode: "addi", rd: "x4", rs1: "x0", imm: 88 },
+        { opcode: "addi", rd: "x5", rs1: "x0", imm: 1, labelTag: "unsignedGreater" }
+      ]
+    },
+    {
       id: "jump",
       title: "无条件跳转",
       description: "用 jal x0, label 演示 J 型跳转如何直接改变 PC。",
@@ -263,6 +302,29 @@
         { opcode: "jal", rd: "x0", label: "target" },
         { opcode: "addi", rd: "x1", rs1: "x1", imm: 99 },
         { opcode: "addi", rd: "x2", rs1: "x0", imm: 7, labelTag: "target" }
+      ]
+    },
+    {
+      id: "jal-link",
+      title: "JAL 保存返回位置",
+      description: "用 jal x1, label 演示跳转同时把下一条指令位置写入 x1。",
+      instructions: [
+        { opcode: "jal", rd: "x1", label: "target" },
+        { opcode: "addi", rd: "x2", rs1: "x0", imm: 99 },
+        { opcode: "addi", rd: "x3", rs1: "x1", imm: 10, labelTag: "target" }
+      ]
+    },
+    {
+      id: "pseudo",
+      title: "教学伪指令",
+      description: "演示 j 与 bltz：它们便于教学，但文档中会说明它们不是 RV32I 基础独立指令。",
+      instructions: [
+        { opcode: "addi", rd: "x1", rs1: "x0", imm: -3 },
+        { opcode: "bltz", rs1: "x1", label: "negative" },
+        { opcode: "addi", rd: "x2", rs1: "x0", imm: 99 },
+        { opcode: "j", label: "done", labelTag: "negative" },
+        { opcode: "addi", rd: "x3", rs1: "x0", imm: 7 },
+        { opcode: "add", rd: "x4", rs1: "x1", rs2: "x3", labelTag: "done" }
       ]
     }
   ];

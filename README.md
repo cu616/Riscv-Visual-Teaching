@@ -5,6 +5,7 @@
 当前已经包含：
 
 - `app/`：RISC-V 可视化教学软件无依赖 MVP
+- `desktop/`：Electron + React + TypeScript + Vite + Blockly 迁移版桌面工程
 - `docs/`：产品说明、开发步骤、环境搭建、Codex 学习资料
 - `.codex/skills/`：项目级 Codex Skills
 - `scripts/`：环境辅助脚本
@@ -40,11 +41,49 @@ npm.cmd run check
 npm.cmd test
 ```
 
+## Blockly 迁移版
+
+`desktop/` 是当前正在推进的正式工程雏形，使用 Electron + React + TypeScript + Vite + Blockly。它已经支持 Blockly 工作区、独立操作数小积木、案例保存/导入、机器状态进制切换、单步执行、运行到结束和 Windows 目录包打包。
+
+开发预览：
+
+```powershell
+npm.cmd --prefix .\desktop run dev
+```
+
+桌面窗口调试：
+
+```powershell
+npm.cmd --prefix .\desktop run dev:electron
+```
+
+验证：
+
+```powershell
+npm.cmd --prefix .\desktop run check
+npm.cmd --prefix .\desktop run test:core
+npm.cmd --prefix .\desktop run build
+```
+
+生成 Windows 目录包：
+
+```powershell
+npm.cmd --prefix .\desktop run package:win
+```
+
+已生成的演示程序位于：
+
+```text
+desktop/release/win-unpacked/RISC-V可视化教学软件.exe
+```
+
 ## 重要文档
 
 - [项目进度与结构总结](docs/项目进度与结构总结.md)
 - [夜间自动化推进计划](docs/夜间自动化推进计划.md)
 - [演示脚本](docs/演示脚本.md)
+- [Blockly 迁移阶段方案](docs/Blockly迁移阶段方案.md)
+- [产品说明：当前阶段版](docs/产品说明_当前阶段版.md)
 - [理论产品说明书大纲](docs/《基于%20RISC-V%20指令集可视化教学的桌面软件》理论产品说明书大纲.md)
 - [开发步骤指南](docs/RISC-V可视化教学桌面软件_开发步骤指南.md)
 - [WSL2 环境搭建执行清单](docs/WSL2_环境搭建_执行清单.md)
