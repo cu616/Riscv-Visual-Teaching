@@ -160,7 +160,7 @@ export default function App() {
         <section className="panel blockly-panel">
           <div className="panel-heading">
             <h2>Blockly 指令工作区</h2>
-            <span>方形卡口 renderer 雏形</span>
+            <span>两层方形积木 renderer</span>
           </div>
           <WorkspacePane
             seedInstructions={workspaceSeed}

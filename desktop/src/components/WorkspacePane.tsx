@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as Blockly from "blockly";
 import "blockly/msg/zh-hans";
 import { registerRiscVBlocks } from "../blocks/riscvBlocks";
@@ -20,25 +20,36 @@ export default function WorkspacePane({ seedInstructions, seedWorkspaceState, se
   const containerRef = useRef<HTMLDivElement | null>(null);
   const workspaceRef = useRef<Blockly.WorkspaceSvg | null>(null);
   const loadingRef = useRef(false);
+  const [workspaceError, setWorkspaceError] = useState<string>();
 
   useEffect(() => {
     if (!containerRef.current || workspaceRef.current) return;
 
-    registerRiscVBlocks();
-    const renderer = registerRiscVRenderer();
-    const workspace = Blockly.inject(containerRef.current, {
-      toolbox,
-      renderer,
-      grid: { spacing: 24, length: 3, colour: "#d9dee5", snap: true },
-      trashcan: true,
-      move: { scrollbars: true, drag: true, wheel: true }
-    });
+    let workspace: Blockly.WorkspaceSvg;
+    try {
+      registerRiscVBlocks();
+      const renderer = registerRiscVRenderer();
+      workspace = Blockly.inject(containerRef.current, {
+        toolbox,
+        renderer,
+        grid: { spacing: 24, length: 3, colour: "#d9dee5", snap: true },
+        trashcan: true,
+        move: { scrollbars: true, drag: true, wheel: true }
+      });
+    } catch (error) {
+      setWorkspaceError(error instanceof Error ? error.message : "Blockly 工作区初始化失败。");
+      return;
+    }
 
     workspace.addChangeListener((event) => {
       if (loadingRef.current) return;
       if (event.isUiEvent) return;
-      onInstructionsChange(blocklyWorkspaceToInstructions(workspace));
-      onWorkspaceStateChange(Blockly.serialization.workspaces.save(workspace));
+      try {
+        onInstructionsChange(blocklyWorkspaceToInstructions(workspace));
+        onWorkspaceStateChange(Blockly.serialization.workspaces.save(workspace));
+      } catch (error) {
+        setWorkspaceError(error instanceof Error ? error.message : "Blockly 工作区解析失败。");
+      }
     });
 
     workspaceRef.current = workspace;
@@ -60,12 +71,23 @@ export default function WorkspacePane({ seedInstructions, seedWorkspaceState, se
     const workspace = workspaceRef.current;
     if (!workspace) return;
     loadingRef.current = true;
-    Blockly.serialization.workspaces.load(seedWorkspaceState || instructionsToBlocklyState(seedInstructions), workspace);
-    loadingRef.current = false;
-    onInstructionsChange(blocklyWorkspaceToInstructions(workspace));
-    onWorkspaceStateChange(Blockly.serialization.workspaces.save(workspace));
-    Blockly.svgResize(workspace);
+    try {
+      Blockly.serialization.workspaces.load(seedWorkspaceState || instructionsToBlocklyState(seedInstructions), workspace);
+      loadingRef.current = false;
+      onInstructionsChange(blocklyWorkspaceToInstructions(workspace));
+      onWorkspaceStateChange(Blockly.serialization.workspaces.save(workspace));
+      Blockly.svgResize(workspace);
+      setWorkspaceError(undefined);
+    } catch (error) {
+      loadingRef.current = false;
+      setWorkspaceError(error instanceof Error ? error.message : "Blockly 工作区加载失败。");
+    }
   }, [seedInstructions, seedWorkspaceState, seedVersion, onInstructionsChange, onWorkspaceStateChange]);
 
-  return <div ref={containerRef} className="blockly-host" />;
+  return (
+    <div className="blockly-shell">
+      {workspaceError ? <div className="blockly-error">Blockly 错误：{workspaceError}</div> : null}
+      <div ref={containerRef} className="blockly-host" />
+    </div>
+  );
 }

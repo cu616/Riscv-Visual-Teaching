@@ -12,9 +12,9 @@ export const FIELD_KINDS: Record<string, "register" | "immediate" | "label"> = {
 };
 
 export const INSTRUCTION_DEFS: Record<string, InstructionDef> = {
-  addi: { opcode: "addi", type: "I", color: "arithmetic", fields: ["rd", "rs1", "imm"], label: "立即数加法", help: "rd = rs1 + imm" },
   add: { opcode: "add", type: "R", color: "arithmetic", fields: ["rd", "rs1", "rs2"], label: "寄存器加法", help: "rd = rs1 + rs2" },
   sub: { opcode: "sub", type: "R", color: "arithmetic", fields: ["rd", "rs1", "rs2"], label: "寄存器减法", help: "rd = rs1 - rs2" },
+  addi: { opcode: "addi", type: "I", color: "arithmetic", fields: ["rd", "rs1", "imm"], label: "立即数加法", help: "rd = rs1 + imm" },
   and: { opcode: "and", type: "R", color: "logic", fields: ["rd", "rs1", "rs2"], label: "按位与", help: "rd = rs1 & rs2" },
   or: { opcode: "or", type: "R", color: "logic", fields: ["rd", "rs1", "rs2"], label: "按位或", help: "rd = rs1 | rs2" },
   xor: { opcode: "xor", type: "R", color: "logic", fields: ["rd", "rs1", "rs2"], label: "按位异或", help: "rd = rs1 ^ rs2" },

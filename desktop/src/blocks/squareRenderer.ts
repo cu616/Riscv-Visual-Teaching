@@ -3,20 +3,29 @@ import * as Blockly from "blockly";
 class RiscVConstantProvider extends Blockly.blockRendering.ConstantProvider {
   constructor() {
     super();
-    this.CORNER_RADIUS = 1;
-    this.NOTCH_WIDTH = 30;
-    this.NOTCH_HEIGHT = 7;
-    this.TAB_WIDTH = 9;
-    this.TAB_HEIGHT = 24;
+    this.CORNER_RADIUS = 0;
+    this.NOTCH_WIDTH = 0;
+    this.NOTCH_HEIGHT = 0;
+    this.NOTCH_OFFSET_LEFT = 0;
+    this.TAB_WIDTH = 0;
+    this.TAB_HEIGHT = 0;
+    this.MIN_BLOCK_HEIGHT = 32;
+    this.MIN_BLOCK_WIDTH = 360;
+    this.DUMMY_INPUT_MIN_HEIGHT = 30;
+    this.EMPTY_INLINE_INPUT_HEIGHT = 30;
+    this.EMPTY_INLINE_INPUT_PADDING = 6;
+    this.FIELD_BORDER_RECT_RADIUS = 0;
+    this.FIELD_DROPDOWN_BORDER_RECT_HEIGHT = 24;
+    this.FIELD_BORDER_RECT_HEIGHT = 24;
+    this.FIELD_TEXT_FONTSIZE = 12;
+    this.FIELD_TEXT_FONTWEIGHT = "700";
   }
 
   override makeNotch() {
-    const width = this.NOTCH_WIDTH;
-    const height = this.NOTCH_HEIGHT;
-    // Square vertical-sided notch. This intentionally avoids Blockly's
-    // rounded/Scratch-like profile to match the project's brick language.
-    const pathLeft = `v ${height} h ${width} v -${height}`;
-    const pathRight = `v ${height} h -${width} v -${height}`;
+    const width = 0;
+    const height = 0;
+    const pathLeft = "";
+    const pathRight = "";
     return {
       type: this.SHAPES.NOTCH,
       width,
@@ -27,18 +36,12 @@ class RiscVConstantProvider extends Blockly.blockRendering.ConstantProvider {
   }
 
   override makePuzzleTab() {
-    const width = this.TAB_WIDTH;
-    const height = this.TAB_HEIGHT;
-    // Square side tab for value inputs such as the left label tag socket.
-    const cap = 5;
-    const pathUp = `v ${cap} h ${width} v ${height - cap * 2} h -${width} v ${cap}`;
-    const pathDown = `v -${cap} h ${width} v -${height - cap * 2} h -${width} v -${cap}`;
     return {
       type: this.SHAPES.PUZZLE_TAB,
-      width,
-      height,
-      pathUp,
-      pathDown
+      width: 0,
+      height: 0,
+      pathUp: "",
+      pathDown: ""
     };
   }
 }

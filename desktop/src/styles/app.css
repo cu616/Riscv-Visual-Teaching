@@ -141,8 +141,71 @@ h2 {
   overflow: hidden;
 }
 
+.blockly-shell {
+  display: grid;
+  gap: 8px;
+}
+
+.blockly-error {
+  border: 1px solid #f0b4b4;
+  border-radius: 6px;
+  background: #fff1f1;
+  color: #9b1c1c;
+  padding: 8px 10px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .blockly-host .blocklyToolboxDiv {
   border-right: 1px solid var(--line);
+}
+
+.blockly-host .blocklySvg {
+  background: #fbfcff;
+}
+
+.blockly-host .blocklyPath {
+  stroke: rgba(17, 24, 39, 0.2);
+  stroke-width: 1px;
+}
+
+.blockly-host .blocklySelected > .blocklyPath {
+  stroke: #111827;
+  stroke-width: 2px;
+}
+
+.blockly-host .blocklyText {
+  font-family: "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.blockly-host .operand-hint {
+  font-size: 9px;
+  font-weight: 800;
+  opacity: 0.72;
+}
+
+.blockly-host .toolbox-section-label {
+  fill: #4b5563;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.blockly-host .blocklyEditableText > rect,
+.blockly-host .blocklyDropdownText + image {
+  rx: 0;
+  ry: 0;
+}
+
+.blockly-host .blocklyFlyoutBackground {
+  fill: #f4f7fb;
+  fill-opacity: 1;
+}
+
+.blockly-host .blocklyMainBackground {
+  stroke: none;
 }
 
 .side-stack {

@@ -1,28 +1,30 @@
 # RISC-V 可视化教学桌面软件
 
-本仓库用于大创项目《基于 RISC-V 指令集可视化教学的桌面软件》的文档整理、AI 协作训练与软件原型开发。
+本仓库用于大创项目《基于 RISC-V 指令集可视化教学的桌面软件》的文档整理、AI 协作训练和软件原型开发。
 
-当前已经包含：
+## 当前技术路线
 
-- `app/`：RISC-V 可视化教学软件无依赖 MVP
-- `desktop/`：Electron + React + TypeScript + Vite + Blockly 迁移版桌面工程
-- `docs/`：产品说明、开发步骤、环境搭建、Codex 学习资料
-- `.codex/skills/`：项目级 Codex Skills
-- `scripts/`：环境辅助脚本
+截至 2026-05-03，项目路线已经明确调整为：
 
-## 当前软件 MVP
+- 主线：`app/` 非 Blockly 自研积木界面，后续优先改造成桌面版。
+- 保留：`desktop/` Blockly 迁移版作为技术验证，用来参考成熟拖拽、连接约束、序列化和 Electron 打包经验。
+- 远期：OpenHarmony 先采用 ArkWeb/WebView 承载自研 Web UI，再根据比赛展示和性能需要逐步原生化到 ArkUI。
 
-仓库已新增 `app/`，包含《基于 RISC-V 指令集可视化教学的桌面软件》的无依赖 MVP。当前定位是大创比赛草案演示程序 / 构想验证原型，版本为 `v0.3.0`。
+Blockly 不需要账号、注册或 API。此前桌面白屏主要来自 Electron 打包后的模块路径、构建产物和二进制依赖问题，不是 Blockly 授权问题。
 
-当前已经支持算术、逻辑、移位、访存、分支、跳转等常用教学指令，并保留 `j`、`bltz` 作为明确标注的教学伪指令。
+## 推荐阅读顺序
 
-双击启动：
+团队成员第一次接手时，建议先阅读：
 
-```text
-启动RISC-V可视化教学软件.bat
-```
+1. [技术路线决策与阶段复盘](docs/技术路线决策与阶段复盘.md)
+2. [工程目录与代码分区说明](docs/工程目录与代码分区说明.md)
+3. [项目进度与结构总结](docs/项目进度与结构总结.md)
+4. [产品说明：当前阶段版](docs/产品说明_当前阶段版.md)
+5. [Blockly 迁移阶段方案](docs/Blockly迁移阶段方案.md)
 
-运行：
+## 运行主线原型
+
+当前主线原型位于 `app/`，运行：
 
 ```powershell
 npm.cmd start
@@ -34,16 +36,15 @@ npm.cmd start
 http://localhost:4173
 ```
 
-验证核心逻辑：
+也可以双击：
 
-```powershell
-npm.cmd run check
-npm.cmd test
+```text
+启动RISC-V可视化教学软件.bat
 ```
 
-## Blockly 迁移版
+## 运行 Blockly 技术验证版
 
-`desktop/` 是当前正在推进的正式工程雏形，使用 Electron + React + TypeScript + Vite + Blockly。它已经支持 Blockly 工作区、独立操作数小积木、案例保存/导入、机器状态进制切换、单步执行、运行到结束和 Windows 目录包打包。
+Blockly + Electron 验证版位于 `desktop/`。
 
 开发预览：
 
@@ -51,49 +52,31 @@ npm.cmd test
 npm.cmd --prefix .\desktop run dev
 ```
 
-桌面窗口调试：
+Electron 调试：
 
 ```powershell
 npm.cmd --prefix .\desktop run dev:electron
 ```
 
-验证：
+检查核心逻辑：
 
 ```powershell
 npm.cmd --prefix .\desktop run check
 npm.cmd --prefix .\desktop run test:core
-npm.cmd --prefix .\desktop run build
 ```
 
-生成 Windows 目录包：
+Windows 打包：
 
 ```powershell
 npm.cmd --prefix .\desktop run package:win
 ```
 
-已生成的演示程序位于：
+如果 Electron 或 app-builder 二进制下载不完整，优先参考 `desktop/scripts/repair-binaries.ps1` 和 `desktop/downloads/` 中的手动下载缓存。
 
-```text
-desktop/release/win-unpacked/RISC-V可视化教学软件.exe
-```
+## 协作原则
 
-## 重要文档
-
-- [项目进度与结构总结](docs/项目进度与结构总结.md)
-- [夜间自动化推进计划](docs/夜间自动化推进计划.md)
-- [演示脚本](docs/演示脚本.md)
-- [Blockly 迁移阶段方案](docs/Blockly迁移阶段方案.md)
-- [产品说明：当前阶段版](docs/产品说明_当前阶段版.md)
-- [理论产品说明书大纲](docs/《基于%20RISC-V%20指令集可视化教学的桌面软件》理论产品说明书大纲.md)
-- [开发步骤指南](docs/RISC-V可视化教学桌面软件_开发步骤指南.md)
-- [WSL2 环境搭建执行清单](docs/WSL2_环境搭建_执行清单.md)
-- [小组编程与 AI 阶段技能清单](docs/小组编程与AI阶段技能清单.md)
-
-## Codex 学习资料
-
-推荐阅读顺序：
-
-1. [Codex 基础教程](docs/codex_tutorial.md)
-2. [Prompt / Agent / Skill 教程](docs/prompt_agent_skill_tutorial.md)
-3. [Codex 基础配置教程](docs/codex_setup_tutorial.md)
-4. [Codex Skill 简易教程](docs/codex_skill_tutorial.md)
+- 需求、取舍和阶段进度必须同步写入 `docs/`，方便后续 AI 和团队成员接力。
+- 主线新功能优先回到 `app/` 的自研积木逻辑，并规划桌面封装。
+- `desktop/` 的 Blockly 代码保留为验证资产，不再强行作为最终外观方案。
+- `desktop/dist/`、`desktop/release/`、`desktop/node_modules/`、`desktop/.cache/` 等生成物不要提交。
+- 新增指令时必须同步维护指令定义、解析、模拟器、示例案例和测试，尤其注意操作数顺序。

@@ -4,8 +4,12 @@ desktop/node_modules/
 desktop/dist/
 desktop/dist-electron/
 desktop/release/
+desktop/manual-win-*/
+desktop/manual-win-log-*/
+desktop/downloads/
 desktop/.cache/
 desktop/*.tsbuildinfo
 desktop/vite.config.js
 desktop/vite.config.d.ts
+*.log
 .DS_Store
