@@ -11,5 +11,8 @@ desktop/.cache/
 desktop/*.tsbuildinfo
 desktop/vite.config.js
 desktop/vite.config.d.ts
+self-desktop/release/
+self-desktop-runtime.log
+logs/
 *.log
 .DS_Store

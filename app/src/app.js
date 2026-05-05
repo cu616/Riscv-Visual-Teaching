@@ -9,6 +9,11 @@
     formatAssembly
   } = window.RiscVTeaching;
   const { createInitialState, executeInstruction } = window.RiscVSimulator;
+  const datapath = window.RiscVDatapath;
+  const ui = window.RiscVUiUtils;
+  const caseFormat = window.RiscVCaseFormat;
+  const operandModel = window.RiscVOperandModel;
+  const machineState = window.RiscVMachineState;
 
   const dom = {
     tabs: document.querySelectorAll(".tab"),
@@ -23,10 +28,22 @@
     customRegisterInput: document.getElementById("customRegisterInput"),
     customImmInput: document.getElementById("customImmInput"),
     customLabelInput: document.getElementById("customLabelInput"),
+    prevBtn: document.getElementById("prevBtn"),
     stepBtn: document.getElementById("stepBtn"),
     autoBtn: document.getElementById("autoBtn"),
     pauseBtn: document.getElementById("pauseBtn"),
     resetBtn: document.getElementById("resetBtn"),
+    saveProgramBtn: document.getElementById("saveProgramBtn"),
+    importProgramInput: document.getElementById("importProgramInput"),
+    stateTargetType: document.getElementById("stateTargetType"),
+    stateTargetName: document.getElementById("stateTargetName"),
+    stateTargetValue: document.getElementById("stateTargetValue"),
+    applyStateValueBtn: document.getElementById("applyStateValueBtn"),
+    clearStateValueBtn: document.getElementById("clearStateValueBtn"),
+    selectedStateDetail: document.getElementById("selectedStateDetail"),
+    caseTitleInput: document.getElementById("caseTitleInput"),
+    teachingGoalInput: document.getElementById("teachingGoalInput"),
+    teachingNotesInput: document.getElementById("teachingNotesInput"),
     runState: document.getElementById("runState"),
     baseButtons: document.querySelectorAll(".base-btn"),
     pcValue: document.getElementById("pcValue"),
@@ -38,6 +55,8 @@
     operandPalette: document.getElementById("operandPalette"),
     currentInstructionLabel: document.getElementById("currentInstructionLabel"),
     stepExplanation: document.getElementById("stepExplanation"),
+    executionProgressText: document.getElementById("executionProgressText"),
+    executionProgressBar: document.getElementById("executionProgressBar"),
     visualNodes: [
       "pcNode",
       "instructionNode",
@@ -64,15 +83,22 @@
       { ...createDefaultInstruction("addi", { x: 36, y: 250 }), rd: "x2", imm: 7 },
       { ...createDefaultInstruction("add", { x: 36, y: 404 }), rd: "x3", rs1: "x1", rs2: "x2" }
     ],
+    looseOperands: [],
+    selectedLooseOperandIds: [],
     parsedProgram: [],
     state: createInitialState(),
     changedRegisters: [],
     changedMemoryAddresses: [],
+    stateHistory: [],
+    lastExecutedInstructionId: null,
     animationTimers: [],
     timer: null
     ,
-    displayBase: "dec"
+    displayBase: "dec",
+    initialState: { registers: {}, memory: {} },
+    notes: { title: "", goal: "", steps: "" }
   };
+  let activeImmediateEditor = null;
 
   function init() {
     renderRegisterSelector();
@@ -96,9 +122,18 @@
     dom.customImmInput.addEventListener("input", renderOperandPalette);
     dom.customRegisterInput.addEventListener("change", renderOperandPalette);
     dom.customLabelInput.addEventListener("input", renderOperandPalette);
+    dom.prevBtn.addEventListener("click", previousStep);
     dom.stepBtn.addEventListener("click", stepProgram);
     dom.autoBtn.addEventListener("click", startAutoRun);
     dom.pauseBtn.addEventListener("click", pauseAutoRun);
+    dom.saveProgramBtn.addEventListener("click", saveProgramFile);
+    dom.importProgramInput.addEventListener("change", (event) => importProgramFile(event.target.files?.[0] || null));
+    dom.stateTargetType.addEventListener("change", renderStateTargetSelector);
+    dom.applyStateValueBtn.addEventListener("click", applyInitialStateValue);
+    dom.clearStateValueBtn.addEventListener("click", clearInitialStateValue);
+    [dom.caseTitleInput, dom.teachingGoalInput, dom.teachingNotesInput].forEach((input) => {
+      input.addEventListener("input", updateNotesFromInputs);
+    });
     dom.baseButtons.forEach((button) => {
       button.addEventListener("click", () => setDisplayBase(button.dataset.base));
     });
@@ -117,13 +152,15 @@
     dom.programDropZone.addEventListener("drop", (event) => {
       event.preventDefault();
       dom.programDropZone.classList.remove("accepting");
-      const payload = readDragPayload(event);
+      const payload = ui.readDragPayload(event);
       if (payload && payload.kind === "instruction") {
         const rect = dom.programCanvas.getBoundingClientRect();
         addInstruction(payload.opcode, {
           x: Math.max(24, event.clientX - rect.left + dom.programCanvas.scrollLeft - 140),
           y: Math.max(96, event.clientY - rect.top + dom.programCanvas.scrollTop)
         });
+      } else if (payload && operandModel.isOperandKind(payload.kind)) {
+        addLooseOperand(payload, event);
       }
     });
 
@@ -133,17 +170,20 @@
     });
     dom.programCanvas.addEventListener("drop", (event) => {
       event.preventDefault();
-      const payload = readDragPayload(event);
+      const payload = ui.readDragPayload(event);
       if (payload && payload.kind === "instruction") {
         const rect = dom.programCanvas.getBoundingClientRect();
         addInstruction(payload.opcode, {
           x: Math.max(24, event.clientX - rect.left + dom.programCanvas.scrollLeft - 140),
           y: Math.max(96, event.clientY - rect.top + dom.programCanvas.scrollTop)
         });
+      } else if (payload && operandModel.isOperandKind(payload.kind)) {
+        addLooseOperand(payload, event);
       }
     });
 
     dom.resetBtn.addEventListener("click", resetMachine);
+    document.addEventListener("keydown", handleGlobalKeyDown);
     bindPaneResize();
   }
 
@@ -167,10 +207,10 @@
         if (!start) return;
         const dx = event.clientX - start.x;
         if (start.kind === "toolbox") {
-          const next = clamp(start.toolbox + dx, 170, 320);
+          const next = ui.clamp(start.toolbox + dx, 170, 320);
           root.style.setProperty("--toolbox-width", `${next}px`);
         } else {
-          const next = clamp(start.editor + dx, 340, 760);
+          const next = ui.clamp(start.editor + dx, 340, 760);
           root.style.setProperty("--editor-width", `${next}px`);
         }
       });
@@ -181,10 +221,6 @@
         start = null;
       });
     });
-  }
-
-  function clamp(value, min, max) {
-    return Math.max(min, Math.min(max, value));
   }
 
   function switchView(viewId) {
@@ -230,26 +266,109 @@
 
   function clearProgram() {
     app.rawInstructions = [];
+    app.looseOperands = [];
+    app.selectedLooseOperandIds = [];
     resetMachine(false);
     renderAll();
+  }
+
+  function addLooseOperand(payload, event) {
+    app.rawInstructions = operandModel.detachPayloadSource(app.rawInstructions, payload);
+    const rect = dom.programCanvas.getBoundingClientRect();
+    app.looseOperands.push(operandModel.createLooseOperand(payload, {
+      x: Math.max(12, event.clientX - rect.left + dom.programCanvas.scrollLeft - 40),
+      y: Math.max(82, event.clientY - rect.top + dom.programCanvas.scrollTop - 16)
+    }));
+    resetMachine(false);
+    renderAll();
+  }
+
+  function saveProgramFile() {
+    const content = JSON.stringify(caseFormat.createTeachingCasePayload({
+      displayBase: app.displayBase,
+      instructions: orderedInstructions(),
+      looseOperands: app.looseOperands,
+      initialState: app.initialState,
+      notes: app.notes
+    }), null, 2);
+    const blob = new Blob([content], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "riscv-teaching-case.riscvteach.json";
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function importProgramFile(file) {
+    if (!file) return;
+    try {
+      const loaded = caseFormat.parseTeachingCasePayload(await file.text());
+      const parsed = parseProgram(loaded.instructions);
+      if (parsed.errors.length) {
+        throw new Error(parsed.errors[0]);
+      }
+      app.rawInstructions = loaded.instructions.map((instruction, index) => ({
+        ...instruction,
+        id: instruction.id || `imported-${index}`,
+        x: Number.isFinite(Number(instruction.x)) ? Number(instruction.x) : 36,
+        y: Number.isFinite(Number(instruction.y)) ? Number(instruction.y) : 96 + index * 154
+      }));
+      app.looseOperands = operandModel.normalizeLooseOperands(loaded.looseOperands);
+      app.selectedLooseOperandIds = [];
+      if (["dec", "hex", "bin"].includes(loaded.displayBase)) app.displayBase = loaded.displayBase;
+      app.initialState = machineState.normalizeInitialState(loaded.initialState);
+      app.notes = caseFormat.normalizeNotes(loaded.notes);
+      syncNotesInputs();
+      renderStateTargetSelector();
+      resetMachine(false);
+      renderAll();
+      renderError("");
+    } catch (error) {
+      renderError(error instanceof Error ? error.message : "案例文件导入失败。");
+    } finally {
+      dom.importProgramInput.value = "";
+    }
   }
 
   function renderAll() {
     const parsed = parseProgram(app.rawInstructions);
     app.parsedProgram = parsed.instructions;
+    syncDisplayBaseControls();
     renderInstructions(parsed.errors);
     renderPreviews(parsed.errors);
+    renderStateTargetSelector();
     renderState();
     renderLog();
     renderError(parsed.errors[0]);
+    updateExecutionProgress();
     updateRunState();
+  }
+
+  function updateNotesFromInputs() {
+    app.notes = {
+      title: dom.caseTitleInput.value,
+      goal: dom.teachingGoalInput.value,
+      steps: dom.teachingNotesInput.value
+    };
+  }
+
+  function syncNotesInputs() {
+    const notes = caseFormat.normalizeNotes(app.notes);
+    dom.caseTitleInput.value = notes.title;
+    dom.teachingGoalInput.value = notes.goal;
+    dom.teachingNotesInput.value = notes.steps;
+    app.notes = notes;
+  }
+
+  function syncDisplayBaseControls() {
+    dom.baseButtons.forEach((button) => button.classList.toggle("active", button.dataset.base === app.displayBase));
   }
 
   function renderInstructions(errors) {
     dom.instructionList.innerHTML = "";
     if (app.rawInstructions.length === 0) {
       dom.instructionList.innerHTML = `<p class="hint">还没有指令。点击左侧积木或“添加指令”开始。</p>`;
-      return;
     }
 
     orderedInstructions().forEach((instruction, index) => {
@@ -260,7 +379,9 @@
       card.style.left = `${instruction.x ?? 36}px`;
       card.style.top = `${instruction.y ?? 96}px`;
       card.dataset.id = instruction.id;
-      if (index === app.state.pc && !app.state.halted) card.classList.add("active");
+      if (instruction.id === app.lastExecutedInstructionId || (!app.lastExecutedInstructionId && index === app.state.pc && !app.state.halted)) {
+        card.classList.add("active");
+      }
       if (errors.length) card.classList.add("error");
       card.innerHTML = `
         ${renderLabelDock(instruction)}
@@ -278,6 +399,28 @@
       card.querySelector(".delete-btn").addEventListener("click", () => deleteInstruction(instruction.id));
       dom.instructionList.appendChild(card);
     });
+    renderLooseOperands();
+  }
+
+  function renderLooseOperands() {
+    app.looseOperands.forEach((operand) => {
+      const chip = document.createElement("span");
+      chip.className = `operand-chip floating-operand-chip ${operand.kind} ${app.selectedLooseOperandIds.includes(operand.id) ? "selected" : ""}`;
+      chip.dataset.id = operand.id;
+      chip.dataset.kind = operand.kind;
+      chip.dataset.value = operand.value;
+      chip.textContent = ui.formatOperand(operand.kind, operand.value);
+      chip.style.left = `${operand.x ?? 36}px`;
+      chip.style.top = `${operand.y ?? 96}px`;
+      chip.title = "可自由拖动；靠近对应槽位后会自动吸附。双击删除。";
+      bindLooseOperandDrag(chip, operand);
+      chip.addEventListener("dblclick", () => deleteLooseOperand(operand.id));
+      chip.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        toggleLooseOperandSelection(operand.id, event.ctrlKey);
+      });
+      dom.instructionList.appendChild(chip);
+    });
   }
 
   function renderInstructionWarning(instruction) {
@@ -287,10 +430,7 @@
   }
 
   function moveInstruction(id, x, y) {
-    app.rawInstructions = app.rawInstructions.map((instruction) => {
-      if (instruction.id !== id) return instruction;
-      return { ...instruction, x, y };
-    });
+    app.rawInstructions = restackInstructions(id, x, y);
     resetMachine(false);
     renderAll();
   }
@@ -316,14 +456,14 @@
       const y = Math.max(82, start.y + event.clientY - start.pointerY);
       card.style.left = `${x}px`;
       card.style.top = `${y}px`;
-      showSortGuide(y);
+      showSortGuide(y, previewInsertIndex(instruction.id, y));
       autoScrollCanvas(event.clientY);
     });
     card.addEventListener("pointerup", (event) => {
       if (!start) return;
       card.releasePointerCapture(event.pointerId);
-      const x = snapToGrid(Number.parseFloat(card.style.left), 12);
-      const y = snapToGrid(Number.parseFloat(card.style.top), 12);
+      const x = ui.snapToGrid(Number.parseFloat(card.style.left), 12);
+      const y = ui.snapToGrid(Number.parseFloat(card.style.top), 12);
       start = null;
       card.classList.remove("dragging");
       hideSortGuide();
@@ -331,11 +471,64 @@
     });
   }
 
-  function snapToGrid(value, grid) {
-    return Math.round(value / grid) * grid;
+  function restackInstructions(activeId, x, y) {
+    const placed = app.rawInstructions.map((instruction) => (
+      instruction.id === activeId ? { ...instruction, x, y } : instruction
+    ));
+    if (hasInstructionOverlap(placed)) {
+      return normalizeInstructionLayout(placed);
+    }
+    return placed;
   }
 
-  function showSortGuide(y) {
+  function hasInstructionOverlap(instructions) {
+    const boxes = instructions.map((instruction) => ({
+      left: instruction.x ?? 36,
+      top: instruction.y ?? 96,
+      right: (instruction.x ?? 36) + 300,
+      bottom: (instruction.y ?? 96) + 48
+    }));
+    return boxes.some((a, index) => boxes.slice(index + 1).some((b) => (
+      a.left < b.right - 48 &&
+      a.right > b.left + 48 &&
+      a.top < b.bottom - 10 &&
+      a.bottom > b.top + 10
+    )));
+  }
+
+  function normalizeInstructionLayout(instructions) {
+    const rows = [];
+    instructions
+      .sort((a, b) => (a.y ?? 0) - (b.y ?? 0) || (a.x ?? 0) - (b.x ?? 0))
+      .forEach((instruction) => {
+        const row = rows.find((candidate) => {
+          const last = candidate.items[candidate.items.length - 1];
+          return Math.abs((instruction.y ?? 0) - candidate.y) < 42 && Math.abs((instruction.x ?? 0) - (last.x ?? 0)) > 180;
+        });
+        if (row) {
+          row.items.push(instruction);
+        } else {
+          rows.push({ y: instruction.y ?? 0, items: [instruction] });
+        }
+      });
+
+    return rows.flatMap((row, rowIndex) => row.items
+      .sort((a, b) => (a.x ?? 0) - (b.x ?? 0))
+      .map((instruction, columnIndex) => ({
+        ...instruction,
+        x: 36 + columnIndex * 306,
+        y: 96 + rowIndex * 86
+      })));
+  }
+
+  function previewInsertIndex(activeId, y) {
+    return app.rawInstructions
+      .map((instruction) => (instruction.id === activeId ? { ...instruction, y } : instruction))
+      .sort((a, b) => (a.y ?? 0) - (b.y ?? 0) || (a.x ?? 0) - (b.x ?? 0))
+      .findIndex((instruction) => instruction.id === activeId);
+  }
+
+  function showSortGuide(y, insertIndex = 0) {
     let guide = document.getElementById("sortGuide");
     if (!guide) {
       guide = document.createElement("div");
@@ -344,6 +537,7 @@
       dom.programCanvas.appendChild(guide);
     }
     guide.style.top = `${Math.max(76, y + 96)}px`;
+    guide.dataset.insertLabel = `插入为第 ${insertIndex + 1} 步`;
     guide.hidden = false;
   }
 
@@ -362,7 +556,7 @@
     return `
       <div class="label-dock" data-kind="label">
         <span class="slot-label">标签帽</span>
-        ${instruction.labelTag ? renderOperandChip("label", instruction.labelTag, false) : `<span class="empty-slot">绿色标签可贴到这里</span>`}
+        ${instruction.labelTag ? renderOperandChip("label", instruction.labelTag, true) : `<span class="empty-slot">绿色标签可贴到这里</span>`}
       </div>
     `;
   }
@@ -373,7 +567,7 @@
         const value = instruction[field];
         const kind = FIELD_KINDS[field] || "register";
         return `
-          <div class="slot ${kind === "immediate" ? "editable-immediate-slot" : ""} ${isAddressField(instruction.opcode, field) ? "address-slot" : ""}" data-field="${field}" data-kind="${kind}">
+          <div class="slot ${kind === "immediate" ? "editable-immediate-slot" : ""} ${ui.isAddressField(instruction.opcode, field) ? "address-slot" : ""}" data-field="${field}" data-kind="${kind}">
             <span class="slot-label">${field}</span>
             ${renderSlotValue(kind, value, field)}
           </div>
@@ -382,18 +576,14 @@
       .join("");
   }
 
-  function isAddressField(opcode, field) {
-    return (opcode === "lw" || opcode === "sw" || opcode === "jalr") && (field === "imm" || field === "rs1");
-  }
-
   function renderSlotValue(kind, value, field) {
-    if (kind === "immediate") {
-      return `<input class="operand-input" type="number" data-field="${field}" value="${value ?? 0}" title="可直接输入立即数、移位量或地址偏移" />`;
-    }
     if (value === undefined || value === "") {
-      return `<span class="empty-slot">拖入${slotName(kind)}积木</span>`;
+      return `<span class="empty-slot">拖入${ui.slotName(kind)}积木</span>`;
     }
-    return renderOperandChip(kind, value, false);
+    if (kind === "immediate") {
+      return renderOperandChip(kind, value, true);
+    }
+    return renderOperandChip(kind, value, true);
   }
 
   function bindSlots(card, instruction) {
@@ -403,9 +593,19 @@
         input.addEventListener("change", () => updateInstruction(instruction.id, input.dataset.field, input.value));
         input.addEventListener("click", (event) => event.stopPropagation());
       }
+      const chip = slot.querySelector(".operand-chip");
+      if (chip) {
+        bindAttachedOperandDrag(chip, instruction.id, slot.dataset.field);
+        if (slot.dataset.kind === "immediate") {
+          chip.addEventListener("dblclick", (event) => {
+            event.stopPropagation();
+            editImmediateField(instruction, slot.dataset.field, chip);
+          });
+        }
+      }
       slot.addEventListener("dragover", (event) => {
         event.preventDefault();
-        const payload = readDragPayload(event);
+        const payload = ui.readDragPayload(event);
         slot.classList.toggle("accepting", Boolean(payload && payload.kind === slot.dataset.kind));
         slot.classList.toggle("invalid-drop", Boolean(payload && payload.kind !== slot.dataset.kind));
       });
@@ -414,12 +614,14 @@
       });
       slot.addEventListener("drop", (event) => {
         event.preventDefault();
+        event.stopPropagation();
         slot.classList.remove("accepting", "invalid-drop");
-        const payload = readDragPayload(event);
+        const payload = ui.readDragPayload(event);
         if (!payload || payload.kind !== slot.dataset.kind) {
-          renderError(`${slot.dataset.field} 槽位需要${slotName(slot.dataset.kind)}积木。`);
+          renderError(`${slot.dataset.field} 槽位需要${ui.slotName(slot.dataset.kind)}积木。`);
           return;
         }
+        app.rawInstructions = operandModel.detachPayloadSource(app.rawInstructions, payload);
         updateInstruction(instruction.id, slot.dataset.field, payload.value);
       });
       slot.addEventListener("click", () => cycleSlotValue(instruction, slot.dataset.field, slot.dataset.kind));
@@ -430,18 +632,22 @@
     const dock = card.querySelector(".label-dock");
     dock.addEventListener("dragover", (event) => {
       event.preventDefault();
-      const payload = readDragPayload(event);
+      const payload = ui.readDragPayload(event);
       dock.classList.toggle("accepting", Boolean(payload && payload.kind === "label"));
     });
     dock.addEventListener("dragleave", () => dock.classList.remove("accepting"));
     dock.addEventListener("drop", (event) => {
       event.preventDefault();
+      event.stopPropagation();
       dock.classList.remove("accepting");
-      const payload = readDragPayload(event);
+      const payload = ui.readDragPayload(event);
       if (payload && payload.kind === "label") {
+        app.rawInstructions = operandModel.detachPayloadSource(app.rawInstructions, payload);
         updateInstruction(instruction.id, "labelTag", payload.value);
       }
     });
+    const chip = dock.querySelector(".operand-chip");
+    if (chip) bindAttachedOperandDrag(chip, instruction.id, "labelTag");
     dock.addEventListener("dblclick", () => {
       updateInstruction(instruction.id, "labelTag", "");
     });
@@ -474,30 +680,261 @@
   }
 
   function renderOperandChip(kind, value, draggable) {
-    return `<span class="operand-chip ${kind}" ${draggable ? "draggable=\"true\"" : ""} data-kind="${kind}" data-value="${value}">${formatOperand(kind, value)}</span>`;
+    return `<span class="operand-chip ${kind}" ${draggable ? "draggable=\"true\"" : ""} data-kind="${kind}" data-value="${value}">${ui.formatOperand(kind, value)}</span>`;
   }
 
-  function readDragPayload(event) {
-    try {
-      const raw = event.dataTransfer.getData("application/json");
-      return raw ? JSON.parse(raw) : null;
-    } catch {
-      return null;
+  function bindAttachedOperandDrag(chip, instructionId, field) {
+    chip.addEventListener("dragstart", (event) => {
+      event.dataTransfer.setData(
+        "application/json",
+        JSON.stringify({
+          kind: chip.dataset.kind,
+          value: chip.dataset.value,
+          detach: { instructionId, field }
+        })
+      );
+      event.dataTransfer.effectAllowed = "move";
+      document.body.classList.toggle("dragging-label", chip.dataset.kind === "label");
+      document.body.classList.toggle("dragging-operand", chip.dataset.kind !== "label");
+    });
+    chip.addEventListener("dragend", () => {
+      document.body.classList.remove("dragging-label");
+      document.body.classList.remove("dragging-operand");
+    });
+  }
+
+  function editImmediateField(instruction, field, anchor) {
+    closeImmediateEditor();
+    const editor = document.createElement("form");
+    editor.className = "immediate-editor";
+    editor.innerHTML = `
+      <input type="number" value="${instruction[field] ?? 0}" aria-label="立即数" />
+      <button type="submit">确定</button>
+      <button type="button" data-cancel>取消</button>
+    `;
+    document.body.appendChild(editor);
+
+    const rect = anchor.getBoundingClientRect();
+    editor.style.left = `${Math.min(rect.left, window.innerWidth - 220)}px`;
+    editor.style.top = `${rect.bottom + 6}px`;
+
+    const input = editor.querySelector("input");
+    const cleanup = () => {
+      document.removeEventListener("pointerdown", onOutsidePointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+      editor.remove();
+      activeImmediateEditor = null;
+    };
+    const submit = () => {
+      const value = Number(input.value);
+      if (!Number.isInteger(value)) {
+        renderError("立即数、移位量或地址偏移必须是整数。");
+        input.focus();
+        input.select();
+        return;
+      }
+      cleanup();
+      updateInstruction(instruction.id, field, value);
+    };
+    const onOutsidePointerDown = (event) => {
+      if (!editor.contains(event.target)) cleanup();
+    };
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") cleanup();
+    };
+
+    editor.addEventListener("submit", (event) => {
+      event.preventDefault();
+      submit();
+    });
+    editor.querySelector("[data-cancel]").addEventListener("click", cleanup);
+    document.addEventListener("pointerdown", onOutsidePointerDown);
+    document.addEventListener("keydown", onKeyDown);
+
+    activeImmediateEditor = cleanup;
+    input.focus();
+    input.select();
+  }
+
+  function closeImmediateEditor() {
+    if (activeImmediateEditor) {
+      activeImmediateEditor();
     }
   }
 
-  function slotName(kind) {
-    return {
-      register: "寄存器",
-      immediate: "立即数/地址偏移",
-      label: "标签"
-    }[kind] || "操作数";
+  function bindLooseOperandDrag(chip, operand) {
+    let start = null;
+    chip.addEventListener("pointerdown", (event) => {
+      if (event.button === 2) return;
+      if (event.ctrlKey) {
+        toggleLooseOperandSelection(operand.id, true);
+        return;
+      }
+      chip.setPointerCapture(event.pointerId);
+      app.selectedLooseOperandIds = [operand.id];
+      chip.classList.add("selected");
+      showOperandTrash();
+      start = {
+        pointerX: event.clientX,
+        pointerY: event.clientY,
+        x: operand.x ?? 36,
+        y: operand.y ?? 96
+      };
+      chip.classList.add("dragging");
+      document.body.classList.toggle("dragging-label", operand.kind === "label");
+      document.body.classList.toggle("dragging-operand", operand.kind !== "label");
+    });
+    chip.addEventListener("pointermove", (event) => {
+      if (!start) return;
+      const canvas = dom.programCanvas.getBoundingClientRect();
+      const x = Math.max(12, Math.min(start.x + event.clientX - start.pointerX, canvas.width - 96));
+      const y = Math.max(82, start.y + event.clientY - start.pointerY);
+      chip.style.left = `${x}px`;
+      chip.style.top = `${y}px`;
+      highlightNearestAttachTarget(operand.kind, event.clientX, event.clientY);
+      updateOperandTrashHover(event.clientX, event.clientY);
+      autoScrollCanvas(event.clientY);
+    });
+    chip.addEventListener("pointerup", (event) => {
+      if (!start) return;
+      chip.releasePointerCapture(event.pointerId);
+      start = null;
+      chip.classList.remove("dragging");
+      document.body.classList.remove("dragging-label");
+      document.body.classList.remove("dragging-operand");
+      clearAttachHints();
+      const overTrash = isPointerOverOperandTrash(event.clientX, event.clientY);
+      hideOperandTrash();
+      if (overTrash) {
+        deleteLooseOperands([operand.id]);
+        return;
+      }
+      const target = findNearestAttachTarget(operand.kind, event.clientX, event.clientY);
+      if (target) {
+        attachLooseOperand(operand, target);
+        return;
+      }
+      updateLooseOperand(operand.id, {
+        x: ui.snapToGrid(Number.parseFloat(chip.style.left), 12),
+        y: ui.snapToGrid(Number.parseFloat(chip.style.top), 12)
+      });
+    });
   }
 
-  function formatOperand(kind, value) {
-    if (kind === "immediate") return `#${value}`;
-    if (kind === "label") return `L${value}`;
-    return value;
+  function highlightNearestAttachTarget(kind, clientX, clientY) {
+    clearAttachHints();
+    const target = findNearestAttachTarget(kind, clientX, clientY);
+    if (!target) return;
+    const selector = target.field === "labelTag" ? ".label-dock" : `.slot[data-field="${target.field}"]`;
+    const card = dom.instructionList.querySelector(`.instruction-card[data-id="${target.instructionId}"]`);
+    const element = card?.querySelector(selector);
+    if (element) element.classList.add("accepting");
+  }
+
+  function clearAttachHints() {
+    dom.instructionList.querySelectorAll(".slot.accepting, .label-dock.accepting").forEach((element) => {
+      element.classList.remove("accepting");
+    });
+  }
+
+  function findNearestAttachTarget(kind, clientX, clientY) {
+    const selector = kind === "label" ? ".label-dock" : `.slot[data-kind="${kind}"]`;
+    const candidates = [...dom.instructionList.querySelectorAll(selector)];
+    let best = null;
+    candidates.forEach((element) => {
+      const rect = element.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const distance = Math.hypot(cx - clientX, cy - clientY);
+      if (distance <= 52 && (!best || distance < best.distance)) {
+        best = { element, distance };
+      }
+    });
+    if (!best) return null;
+    const card = best.element.closest(".instruction-card");
+    return {
+      instructionId: card?.dataset.id,
+      field: kind === "label" ? "labelTag" : best.element.dataset.field
+    };
+  }
+
+  function attachLooseOperand(operand, target) {
+    app.rawInstructions = operandModel.attachOperandToInstruction(app.rawInstructions, operand, target, FIELD_KINDS);
+    app.looseOperands = operandModel.removeLooseOperand(app.looseOperands, operand.id);
+    app.selectedLooseOperandIds = app.selectedLooseOperandIds.filter((id) => id !== operand.id);
+    resetMachine(false);
+    renderAll();
+  }
+
+  function updateLooseOperand(id, patch) {
+    app.looseOperands = operandModel.updateLooseOperand(app.looseOperands, id, patch);
+    renderAll();
+  }
+
+  function deleteLooseOperand(id) {
+    deleteLooseOperands([id]);
+  }
+
+  function deleteLooseOperands(ids) {
+    app.looseOperands = app.looseOperands.filter((operand) => !ids.includes(operand.id));
+    app.selectedLooseOperandIds = app.selectedLooseOperandIds.filter((id) => !ids.includes(id));
+    renderAll();
+  }
+
+  function selectLooseOperand(id, additive) {
+    app.selectedLooseOperandIds = additive ? [...new Set([...app.selectedLooseOperandIds, id])] : [id];
+    renderAll();
+  }
+
+  function toggleLooseOperandSelection(id, additive) {
+    if (!additive) {
+      selectLooseOperand(id, false);
+      return;
+    }
+    app.selectedLooseOperandIds = app.selectedLooseOperandIds.includes(id)
+      ? app.selectedLooseOperandIds.filter((selectedId) => selectedId !== id)
+      : [...app.selectedLooseOperandIds, id];
+    renderAll();
+  }
+
+  function handleGlobalKeyDown(event) {
+    if (event.key !== "Delete" && event.key !== "Backspace") return;
+    if (["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) return;
+    if (!app.selectedLooseOperandIds.length) return;
+    event.preventDefault();
+    deleteLooseOperands(app.selectedLooseOperandIds);
+  }
+
+  function showOperandTrash() {
+    ensureOperandTrash().classList.add("visible");
+  }
+
+  function hideOperandTrash() {
+    const trash = document.getElementById("operandTrash");
+    if (trash) trash.classList.remove("visible", "active");
+  }
+
+  function updateOperandTrashHover(clientX, clientY) {
+    ensureOperandTrash().classList.toggle("active", isPointerOverOperandTrash(clientX, clientY));
+  }
+
+  function isPointerOverOperandTrash(clientX, clientY) {
+    const trash = document.getElementById("operandTrash");
+    if (!trash) return false;
+    const rect = trash.getBoundingClientRect();
+    return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
+  }
+
+  function ensureOperandTrash() {
+    let trash = document.getElementById("operandTrash");
+    if (!trash) {
+      trash = document.createElement("div");
+      trash.id = "operandTrash";
+      trash.className = "operand-trash";
+      trash.textContent = "删除";
+      document.body.appendChild(trash);
+    }
+    return trash;
   }
 
   function cycleSlotValue(instruction, field, kind) {
@@ -523,31 +960,98 @@
 
   function renderState() {
     dom.pcValue.textContent = formatValue(app.state.pc);
-    dom.registerGrid.innerHTML = REGISTERS.slice(0, 16)
-      .map((name) => `<div class="reg-cell ${app.changedRegisters.includes(name) ? "changed" : ""}"><span>${name}</span><strong>${formatValue(app.state.registers[name])}</strong></div>`)
+    const visibleRegisters = REGISTERS.slice(0, 16);
+    dom.registerGrid.innerHTML = chunk(visibleRegisters, 4)
+      .map((row) => `
+        <div class="state-row-label">${row[0]}</div>
+        ${row.map((name) => {
+          const initialized = Object.prototype.hasOwnProperty.call(app.initialState.registers, name);
+          return `<button class="reg-cell ${app.changedRegisters.includes(name) ? "changed" : ""} ${initialized ? "initialized" : ""}" data-type="register" data-name="${name}" title="${name}"><strong>${formatValue(app.state.registers[name])}</strong></button>`;
+        }).join("")}
+      `)
       .join("");
 
     const addresses = Object.keys(app.state.memory)
       .map(Number)
       .sort((a, b) => a - b);
     dom.memoryGrid.innerHTML = addresses
-      .map((address) => `<div class="mem-cell ${app.changedMemoryAddresses.includes(address) ? "changed" : ""}"><span>@${formatValue(address)}</span><strong>${formatValue(app.state.memory[address])}</strong></div>`)
+      .reduce((rows, address, index) => {
+        if (index % 4 === 0) rows.push([]);
+        rows[rows.length - 1].push(address);
+        return rows;
+      }, [])
+      .map((row) => `
+        <div class="state-row-label">@${formatValue(row[0])}</div>
+        ${row.map((address) => {
+          const initialized = Object.prototype.hasOwnProperty.call(app.initialState.memory, address);
+          return `<button class="mem-cell ${app.changedMemoryAddresses.includes(address) ? "changed" : ""} ${initialized ? "initialized" : ""}" data-type="memory" data-name="${address}" title="memory[${address}]"><strong>${formatValue(app.state.memory[address])}</strong></button>`;
+        }).join("")}
+      `)
+      .join("");
+    bindStateCells();
+    dom.prevBtn.disabled = app.stateHistory.length === 0;
+  }
+
+  function chunk(items, size) {
+    const rows = [];
+    for (let index = 0; index < items.length; index += size) {
+      rows.push(items.slice(index, index + size));
+    }
+    return rows;
+  }
+
+  function renderStateTargetSelector() {
+    const targetType = dom.stateTargetType.value;
+    const values = targetType === "register" ? REGISTERS : machineState.listMemoryAddresses(app.initialState);
+    const current = dom.stateTargetName.value;
+    dom.stateTargetName.innerHTML = values
+      .map((value) => `<option value="${value}" ${String(value) === current ? "selected" : ""}>${targetType === "memory" ? `@${value}` : value}</option>`)
       .join("");
   }
 
-  function formatValue(value) {
-    const normalized = Number(value) || 0;
-    if (app.displayBase === "hex") {
-      return `0x${toUnsigned32(normalized).toString(16).toUpperCase().padStart(8, "0")}`;
+  function applyInitialStateValue() {
+    try {
+      app.initialState = machineState.setInitialValue(
+        app.initialState,
+        dom.stateTargetType.value,
+        dom.stateTargetName.value,
+        dom.stateTargetValue.value
+      );
+      resetMachine(false);
+      renderAll();
+      renderStateDetail(dom.stateTargetType.value, dom.stateTargetName.value);
+    } catch (error) {
+      renderError(error instanceof Error ? error.message : "初始状态写入失败。");
     }
-    if (app.displayBase === "bin") {
-      return `0b${toUnsigned32(normalized).toString(2).padStart(32, "0")}`;
-    }
-    return String(normalized);
   }
 
-  function toUnsigned32(value) {
-    return value >>> 0;
+  function clearInitialStateValue() {
+    app.initialState = machineState.clearInitialValue(app.initialState, dom.stateTargetType.value, dom.stateTargetName.value);
+    resetMachine(false);
+    renderAll();
+    renderStateDetail(dom.stateTargetType.value, dom.stateTargetName.value);
+  }
+
+  function bindStateCells() {
+    document.querySelectorAll(".reg-cell, .mem-cell").forEach((cell) => {
+      cell.addEventListener("click", () => {
+        dom.stateTargetType.value = cell.dataset.type;
+        renderStateTargetSelector();
+        dom.stateTargetName.value = cell.dataset.name;
+        renderStateDetail(cell.dataset.type, cell.dataset.name);
+      });
+    });
+  }
+
+  function renderStateDetail(type, name) {
+    const initial = type === "register" ? app.initialState.registers[name] : app.initialState.memory[Number(name)];
+    const current = type === "register" ? app.state.registers[name] : app.state.memory[Number(name)];
+    const label = type === "register" ? name : `memory[${name}]`;
+    dom.selectedStateDetail.textContent = `${label} 当前值：${formatValue(current || 0)}；初始值：${initial === undefined ? "默认" : formatValue(initial)}`;
+  }
+
+  function formatValue(value) {
+    return ui.formatValue(value, app.displayBase);
   }
 
   function renderLog() {
@@ -570,16 +1074,46 @@
     }
 
     try {
+      if (app.state.halted) return;
+      app.stateHistory.push({
+        state: cloneExecutionState(app.state),
+        changedRegisters: [...app.changedRegisters],
+        changedMemoryAddresses: [...app.changedMemoryAddresses],
+        lastExecutedInstructionId: app.lastExecutedInstructionId
+      });
       const { state, result } = executeInstruction(app.state, parsed.instructions);
       app.state = state;
       app.changedRegisters = result.changedRegisters;
       app.changedMemoryAddresses = result.changedMemoryAddresses;
+      app.lastExecutedInstructionId = result.instruction?.id || null;
       renderAll();
       renderExecutionResult(result);
     } catch (error) {
       pauseAutoRun();
       renderError(error.message);
     }
+  }
+
+  function previousStep() {
+    const snapshot = app.stateHistory.pop();
+    if (!snapshot) return;
+    pauseAutoRun();
+    app.state = cloneExecutionState(snapshot.state);
+    app.changedRegisters = snapshot.changedRegisters;
+    app.changedMemoryAddresses = snapshot.changedMemoryAddresses;
+    app.lastExecutedInstructionId = snapshot.lastExecutedInstructionId;
+    clearAnimationTimers();
+    renderAll();
+  }
+
+  function cloneExecutionState(state) {
+    return {
+      registers: { ...state.registers },
+      memory: { ...state.memory },
+      pc: state.pc,
+      halted: state.halted,
+      logs: [...state.logs]
+    };
   }
 
   function renderExecutionResult(result) {
@@ -593,18 +1127,18 @@
       document.querySelector("#instructionNode strong").textContent = formatAssembly(instruction);
       document.querySelector("#pcNode strong").textContent = app.state.pc;
       document.getElementById("rs1Node").textContent = instruction.rs1 || "rs1";
-      document.getElementById("rs2Node").textContent = operandTwoLabel(instruction);
+      document.getElementById("rs2Node").textContent = datapath.operandTwoLabel(instruction);
       document.querySelector("#writebackNode strong").textContent = instruction.rd || (instruction.opcode === "sw" ? "memory" : "rd");
-      document.querySelector("#aluNode strong").textContent = result.animationPlan.find((item) => typeof item === "string" && item.includes("=")) || aluLabel(instruction);
-      document.querySelector("#memoryNode strong").textContent = memoryLabel(instruction);
-      document.querySelector("#branchNode strong").textContent = branchLabel(instruction);
+      document.querySelector("#aluNode strong").textContent = result.animationPlan.find((item) => typeof item === "string" && item.includes("=")) || datapath.aluLabel(instruction);
+      document.querySelector("#memoryNode strong").textContent = datapath.memoryLabel(instruction);
+      document.querySelector("#branchNode strong").textContent = datapath.branchLabel(instruction);
       playAnimationFrames(result);
     }
   }
 
   function playAnimationFrames(result) {
     clearAnimationTimers();
-    const frames = buildAnimationFrames(result);
+    const frames = datapath.buildAnimationFrames(result);
     frames.forEach((frame, index) => {
       const timer = window.setTimeout(() => {
         dom.visualNodes.forEach((node) => node.classList.remove("active"));
@@ -622,110 +1156,18 @@
     app.animationTimers.push(finalTimer);
   }
 
-  function buildAnimationFrames(result) {
-    const instruction = result.instruction;
-    if (!instruction) return [{ ids: [], text: result.explanation }];
-
-    if (instruction.opcode === "lw") {
-      return [
-        { ids: ["pcNode", "instructionNode", "busFetch"], text: "取出当前指令，并根据 PC 定位执行位置。" },
-        { ids: ["registerFileNode", "rs1Node", "busRs1"], text: `读取基址寄存器 ${instruction.rs1}。` },
-        { ids: ["aluNode", "busRs1"], text: `ALU 计算访存地址：${instruction.rs1} + ${instruction.imm}。` },
-        { ids: ["memoryNode", "busAluMem"], text: "访问内存，读取该地址中的数据。" },
-        { ids: ["writebackNode", "busMemWb"], text: `把内存数据写回目标寄存器 ${instruction.rd}。` }
-      ];
-    }
-
-    if (instruction.opcode === "sw") {
-      return [
-        { ids: ["pcNode", "instructionNode", "busFetch"], text: "取出 store 指令，准备计算写入地址。" },
-        { ids: ["registerFileNode", "rs1Node", "rs2Node", "busRs1", "busRs2"], text: `读取基址 ${instruction.rs1} 和待写入数据 ${instruction.rs2}。` },
-        { ids: ["aluNode", "busRs1"], text: `ALU 计算内存地址：${instruction.rs1} + ${instruction.imm}。` },
-        { ids: ["memoryNode", "busAluMem"], text: "把源寄存器的数据写入计算出的内存地址。" }
-      ];
-    }
-
-    if (["beq", "bne", "blt", "bge", "bltu", "bgeu", "bltz"].includes(instruction.opcode)) {
-      return [
-        { ids: ["pcNode", "instructionNode", "busFetch"], text: "取出分支指令，准备比较寄存器并决定 PC 是否跳转。" },
-        { ids: ["registerFileNode", "rs1Node", "rs2Node", "busRs1", "busRs2"], text: instruction.opcode === "bltz" ? `读取 ${instruction.rs1}，并与 x0/0 比较。` : `读取 ${instruction.rs1} 和 ${instruction.rs2}。` },
-        { ids: ["aluNode", "branchNode", "busPc"], text: "比较条件进入分支判断单元，条件成立时 PC 改为目标标签。" }
-      ];
-    }
-
-    if (["jal", "jalr", "j"].includes(instruction.opcode)) {
-      return [
-        { ids: ["pcNode", "instructionNode", "busFetch"], text: "取出跳转指令，当前 PC 不再只做顺序加一。" },
-        { ids: ["aluNode", "branchNode", "busPc"], text: instruction.opcode === "jalr" ? "用寄存器基址加偏移计算跳转目标。" : "根据标签定位跳转目标，并把 PC 指向目标指令。" },
-        { ids: ["writebackNode", "busAluWb"], text: instruction.opcode === "j" || instruction.rd === "x0" ? "rd 为 x0 时返回地址被忽略，形成无条件跳转效果。" : `把返回位置写入 ${instruction.rd}，便于之后返回。` }
-      ];
-    }
-
-    if (["and", "or", "xor", "andi", "ori", "xori"].includes(instruction.opcode)) {
-      return [
-        { ids: ["pcNode", "instructionNode", "busFetch"], text: "取出逻辑运算指令，准备观察位级变化。" },
-        { ids: ["registerFileNode", "rs1Node", "rs2Node", "busRs1", "busRs2"], text: instruction.imm !== undefined ? `读取 ${instruction.rs1}，并取立即数 ${instruction.imm} 作为掩码。` : `读取 ${instruction.rs1} 和 ${instruction.rs2} 两个位模式。` },
-        { ids: ["aluNode", "busRs1", "busRs2"], text: "ALU 不是做十进制算术，而是逐位执行 AND / OR / XOR。" },
-        { ids: ["writebackNode", "busAluWb"], text: `把位运算结果写回目标寄存器 ${instruction.rd}。` }
-      ];
-    }
-
-    if (["sll", "srl", "sra", "slli", "srli", "srai"].includes(instruction.opcode)) {
-      return [
-        { ids: ["pcNode", "instructionNode", "busFetch"], text: "取出移位指令，适合切到二进制显示观察位移动。" },
-        { ids: ["registerFileNode", "rs1Node", "rs2Node", "busRs1", "busRs2"], text: instruction.shamt !== undefined ? `读取 ${instruction.rs1}，移位量 shamt=${instruction.shamt}。` : `读取 ${instruction.rs1}，并使用 ${instruction.rs2} 的低 5 位作为移位量。` },
-        { ids: ["aluNode", "busRs1", "busRs2"], text: "ALU 执行左移、逻辑右移或算术右移，重点观察高位如何补齐。" },
-        { ids: ["writebackNode", "busAluWb"], text: `把移位结果写回目标寄存器 ${instruction.rd}。` }
-      ];
-    }
-
-    return [
-      { ids: ["pcNode", "instructionNode", "busFetch"], text: "取出当前算术指令。" },
-      { ids: ["registerFileNode", "rs1Node", "rs2Node", "busRs1", "busRs2"], text: instruction.opcode === "addi" ? `读取 ${instruction.rs1}，并取立即数 ${instruction.imm}。` : `读取 ${instruction.rs1} 和 ${instruction.rs2}。` },
-      { ids: ["aluNode", "busRs1", "busRs2"], text: "数据进入 ALU，执行算术运算。" },
-      { ids: ["writebackNode", "busAluWb"], text: `把 ALU 结果写回目标寄存器 ${instruction.rd}。` }
-    ];
-  }
-
   function clearAnimationTimers() {
     app.animationTimers.forEach((timer) => window.clearTimeout(timer));
     app.animationTimers = [];
   }
 
-  function aluLabel(instruction) {
-    if (instruction.opcode === "lw" || instruction.opcode === "sw") return "地址 = rs1 + offset";
-    if (["beq", "bne", "blt", "bge", "bltu", "bgeu", "bltz"].includes(instruction.opcode)) return "条件比较";
-    if (["jal", "jalr", "j"].includes(instruction.opcode)) return "PC 目标";
-    if (["and", "or", "xor", "andi", "ori", "xori"].includes(instruction.opcode)) return "按位逻辑";
-    if (["sll", "srl", "sra", "slli", "srli", "srai"].includes(instruction.opcode)) return "位移运算";
-    return "算术运算";
-  }
-
-  function memoryLabel(instruction) {
-    if (instruction.opcode === "lw") return "读取内存";
-    if (instruction.opcode === "sw") return "写入内存";
-    return "本步不访存";
-  }
-
-  function branchLabel(instruction) {
-    if (["beq", "bne", "blt", "bge", "bltu", "bgeu", "bltz"].includes(instruction.opcode)) return "比较并更新 PC";
-    if (["jal", "jalr", "j"].includes(instruction.opcode)) return "跳转目标";
-    return "PC + 1";
-  }
-
-  function operandTwoLabel(instruction) {
-    if (instruction.rs2) return instruction.rs2;
-    if (instruction.shamt !== undefined) return `shamt ${instruction.shamt}`;
-    if (instruction.imm !== undefined) return `imm ${instruction.imm}`;
-    if (instruction.label) return instruction.labelName || instruction.label;
-    return "rs2 / imm";
-  }
-
   function resetMachine(render = true) {
     pauseAutoRun();
-    app.state = createInitialState();
+    app.state = machineState.createStateFromInitial(createInitialState, app.initialState);
     app.changedRegisters = [];
     app.changedMemoryAddresses = [];
+    app.stateHistory = [];
+    app.lastExecutedInstructionId = null;
     clearAnimationTimers();
     dom.currentInstructionLabel.textContent = "等待执行";
     dom.stepExplanation.textContent = "点击“单步执行”，观察寄存器、ALU、内存和 PC 的变化。";
@@ -740,8 +1182,7 @@
   }
 
   function startAutoRun() {
-    if (app.timer) return;
-    dom.runState.textContent = "自动执行中";
+    if (app.timer || app.state.halted) return;
     app.timer = window.setInterval(() => {
       if (app.state.halted) {
         pauseAutoRun();
@@ -749,6 +1190,7 @@
       }
       stepProgram();
     }, 3200);
+    updateRunState();
   }
 
   function pauseAutoRun() {
@@ -760,6 +1202,11 @@
   }
 
   function updateRunState() {
+    document.body.classList.toggle("is-running", Boolean(app.timer));
+    dom.prevBtn.disabled = app.stateHistory.length === 0 || Boolean(app.timer);
+    dom.stepBtn.disabled = app.state.halted || Boolean(app.timer);
+    dom.autoBtn.disabled = app.state.halted || Boolean(app.timer);
+    dom.pauseBtn.disabled = !app.timer;
     if (app.timer) {
       dom.runState.textContent = "自动执行中";
     } else if (app.state.halted) {
@@ -767,6 +1214,14 @@
     } else {
       dom.runState.textContent = "就绪";
     }
+  }
+
+  function updateExecutionProgress() {
+    const total = app.parsedProgram.length;
+    const done = app.state.halted ? total : Math.min(app.state.pc, total);
+    dom.executionProgressText.textContent = `${done} / ${total}`;
+    dom.executionProgressBar.max = Math.max(total, 1);
+    dom.executionProgressBar.value = done;
   }
 
   function renderExamples() {
@@ -787,6 +1242,12 @@
           ...createDefaultInstruction(instruction.opcode, { x: 36, y: 96 + index * 154 }),
           ...instruction
         }));
+        app.looseOperands = [];
+        app.selectedLooseOperandIds = [];
+        app.initialState = { registers: {}, memory: {} };
+        app.notes = { title: "", goal: "", steps: "" };
+        syncNotesInputs();
+        renderStateTargetSelector();
         resetMachine(false);
         renderAll();
         switchView("workspace");

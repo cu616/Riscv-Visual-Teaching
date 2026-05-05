@@ -20,9 +20,13 @@ Blockly 不需要账号、注册或 API。此前桌面白屏主要来自 Electro
 2. [工程目录与代码分区说明](docs/工程目录与代码分区说明.md)
 3. [项目进度与结构总结](docs/项目进度与结构总结.md)
 4. [产品说明：当前阶段版](docs/产品说明_当前阶段版.md)
-5. [Blockly 迁移阶段方案](docs/Blockly迁移阶段方案.md)
+5. [明早验收与问题定位清单](docs/明早验收与问题定位清单.md)
+6. [长期自动化开发任务：非 Blockly 主线工程化](docs/长期自动化开发任务_非Blockly主线工程化.md)
+7. [自动化开发执行记录](docs/自动化开发执行记录.md)
+8. [长期任务 v0.4：案例工程化与初始状态闭环](docs/长期任务_v0.4_案例工程化与初始状态闭环.md)
+9. [Blockly 迁移阶段方案](docs/Blockly迁移阶段方案.md)
 
-## 运行主线原型
+## 运行非 Blockly 主线原型
 
 当前主线原型位于 `app/`，运行：
 
@@ -40,6 +44,42 @@ http://localhost:4173
 
 ```text
 启动RISC-V可视化教学软件.bat
+```
+
+## 运行非 Blockly 桌面版
+
+当前非 Blockly 桌面壳位于 `self-desktop/`，它直接承载 `app/` 的自研积木界面，不引入 Blockly。
+
+最简单方式是双击：
+
+```text
+打开非Blockly自研积木桌面版.bat
+```
+
+该脚本会检查本地服务是否已经启动；如果没有，会自动启动 `app/` 主线服务，并优先用 Edge/Chrome 的应用窗口模式打开 `http://localhost:4173`。应用窗口模式没有普通浏览器标签栏，是当前最稳定的非 Blockly 桌面化打开方式。
+
+启动日志位于：
+
+```text
+logs/launch_non_blockly_app.log
+```
+
+桌面窗口调试：
+
+```powershell
+npm.cmd run self:electron
+```
+
+Windows 目录包打包：
+
+```powershell
+npm.cmd run self:package:win
+```
+
+打包产物位于：
+
+```text
+self-desktop/release/win-unpacked/
 ```
 
 ## 运行 Blockly 技术验证版

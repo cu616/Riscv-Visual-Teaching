@@ -1,0 +1,28 @@
+{
+  "appId": "cn.dachuang.riscv.visual-teaching.self",
+  "productName": "RISC-V可视化教学软件-自研积木版",
+  "electronVersion": "30.0.9",
+  "asar": false,
+  "npmRebuild": false,
+  "directories": {
+    "output": "self-desktop/release"
+  },
+  "files": [
+    "app/**/*",
+    "self-desktop/main.js",
+    "self-desktop/preload.js",
+    "self-desktop/package.json",
+    "package.json"
+  ],
+  "extraMetadata": {
+    "main": "self-desktop/main.js",
+    "name": "riscv-visual-teaching-self-desktop",
+    "version": "0.4.0-alpha.0"
+  },
+  "win": {
+    "signAndEditExecutable": false,
+    "target": [
+      "dir"
+    ]
+  }
+}
