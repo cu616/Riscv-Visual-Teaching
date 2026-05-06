@@ -1,5 +1,13 @@
 generated_skills/
 node_modules/
+
+# Blockly desktop source is intended to be committed:
+#   desktop/src/
+#   desktop/electron/
+#   desktop/package.json
+#   desktop/package-lock.json
+#   desktop/*.ts config files
+# Only generated dependencies, build outputs, caches, and repaired binaries are ignored below.
 desktop/node_modules/
 desktop/dist/
 desktop/dist-electron/
