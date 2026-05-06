@@ -1,0 +1,10 @@
+{
+  "modelVersion": "5.0.0",
+  "name": "riscv_visual_teaching_oh",
+  "version": "0.1.0",
+  "description": "OpenHarmony ArkWeb shell for the non-Blockly RISC-V visual teaching app.",
+  "main": "",
+  "author": "RISC-V Visual Teaching Team",
+  "license": "Apache-2.0",
+  "dependencies": {}
+}

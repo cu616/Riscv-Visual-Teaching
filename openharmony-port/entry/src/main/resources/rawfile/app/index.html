@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RISC-V 指令集可视化教学软件</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./openharmony-port.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">RISC-V Visual Teaching Studio</p>
+          <h1>RISC-V 指令集可视化教学软件</h1>
+        </div>
+        <nav class="tabs" aria-label="页面导航">
+          <button class="tab active" data-view="workspace">工作台</button>
+          <button class="tab" data-view="examples">示例案例</button>
+          <button class="tab" data-view="harmony">OpenHarmony 概念</button>
+        </nav>
+      </header>
+
+      <main>
+        <section id="workspace" class="view active">
+          <section class="toolbar" aria-label="执行控制">
+            <div class="debug-controls" aria-label="分步调试">
+              <button id="prevBtn" title="上一步">◀ 上一步</button>
+              <button id="stepBtn" class="primary" title="下一步">▶ 下一步</button>
+              <button id="pauseBtn" title="暂停">Ⅱ 暂停</button>
+              <button id="resetBtn" title="重置">↻ 重置</button>
+            </div>
+            <button id="autoBtn" title="自动执行">▶ 自动执行</button>
+            <button id="clearProgramBtn">清空程序</button>
+            <button id="saveProgramBtn">保存案例</button>
+            <label class="file-button">
+              导入案例
+              <input id="importProgramInput" type="file" accept=".json,.riscvteach.json,application/json" />
+            </label>
+            <button id="demoModeBtn">演示模式</button>
+            <div class="execution-progress" aria-label="执行进度">
+              <span id="executionProgressText">0 / 0</span>
+              <progress id="executionProgressBar" value="0" max="1"></progress>
+            </div>
+            <span id="debugHint" class="debug-hint">上一步只回退执行状态</span>
+            <span id="runState" class="status-pill">就绪</span>
+          </section>
+
+          <section class="workspace-grid">
+            <aside class="panel toolbox-panel pane">
+              <div class="panel-heading">
+                <h2>指令积木</h2>
+                <span>自研积木</span>
+              </div>
+              <div class="block-palette" aria-label="指令积木分类">
+                <div class="block-group">
+                  <span>算术</span>
+                  <div class="block-grid">
+                    <button class="block-chip arithmetic" draggable="true" data-opcode="addi">addi</button>
+                    <button class="block-chip arithmetic" draggable="true" data-opcode="add">add</button>
+                    <button class="block-chip arithmetic" draggable="true" data-opcode="sub">sub</button>
+                  </div>
+                </div>
+                <div class="block-group">
+                  <span>逻辑</span>
+                  <div class="block-grid">
+                    <button class="block-chip logic" draggable="true" data-opcode="and">and</button>
+                    <button class="block-chip logic" draggable="true" data-opcode="or">or</button>
+                    <button class="block-chip logic" draggable="true" data-opcode="xor">xor</button>
+                    <button class="block-chip logic" draggable="true" data-opcode="andi">andi</button>
+                    <button class="block-chip logic" draggable="true" data-opcode="ori">ori</button>
+                    <button class="block-chip logic" draggable="true" data-opcode="xori">xori</button>
+                  </div>
+                </div>
+                <div class="block-group">
+                  <span>移位</span>
+                  <div class="block-grid">
+                    <button class="block-chip shift" draggable="true" data-opcode="sll">sll</button>
+                    <button class="block-chip shift" draggable="true" data-opcode="srl">srl</button>
+                    <button class="block-chip shift" draggable="true" data-opcode="sra">sra</button>
+                    <button class="block-chip shift" draggable="true" data-opcode="slli">slli</button>
+                    <button class="block-chip shift" draggable="true" data-opcode="srli">srli</button>
+                    <button class="block-chip shift" draggable="true" data-opcode="srai">srai</button>
+                  </div>
+                </div>
+                <div class="block-group">
+                  <span>访存</span>
+                  <div class="block-grid">
+                    <button class="block-chip memory" draggable="true" data-opcode="lw">lw</button>
+                    <button class="block-chip memory" draggable="true" data-opcode="sw">sw</button>
+                  </div>
+                </div>
+                <div class="block-group">
+                  <span>分支</span>
+                  <div class="block-grid">
+                    <button class="block-chip branch" draggable="true" data-opcode="beq">beq</button>
+                    <button class="block-chip branch" draggable="true" data-opcode="bne">bne</button>
+                    <button class="block-chip branch" draggable="true" data-opcode="blt">blt</button>
+                    <button class="block-chip branch" draggable="true" data-opcode="bge">bge</button>
+                    <button class="block-chip branch" draggable="true" data-opcode="bltu">bltu</button>
+                    <button class="block-chip branch" draggable="true" data-opcode="bgeu">bgeu</button>
+                    <button class="block-chip branch" draggable="true" data-opcode="bltz">bltz</button>
+                  </div>
+                </div>
+                <div class="block-group">
+                  <span>跳转</span>
+                  <div class="block-grid">
+                    <button class="block-chip jump" draggable="true" data-opcode="jal">jal</button>
+                    <button class="block-chip jump" draggable="true" data-opcode="jalr">jalr</button>
+                    <button class="block-chip jump" draggable="true" data-opcode="j">j</button>
+                  </div>
+                </div>
+              </div>
+              <h3>小积木素材</h3>
+              <label class="custom-imm-control">
+                寄存器
+                <select id="customRegisterInput"></select>
+              </label>
+              <label class="custom-imm-control">
+                自定义立即数
+                <input id="customImmInput" type="number" value="8" />
+              </label>
+              <label class="custom-imm-control">
+                标签名
+                <input id="customLabelInput" type="text" value="loop" />
+              </label>
+              <div class="operand-palette" id="operandPalette"></div>
+              <p class="hint">
+                把指令大积木拖入编辑区，再把小积木贴到对应接口。立即数槽位可直接键盘输入。
+              </p>
+            </aside>
+
+            <div class="resize-handle" data-resize="toolbox" title="拖动调整素材区宽度"></div>
+
+            <section class="panel editor-panel pane">
+              <div class="panel-heading">
+                <h2>指令编辑区</h2>
+                <span>拖拽拼接 RV32I 教学指令</span>
+              </div>
+              <div id="programCanvas" class="program-canvas">
+                <div id="programDropZone" class="program-drop-zone">
+                  把左侧指令大积木拖到这里，可上下拖动排序
+                </div>
+                <div id="instructionList" class="instruction-list"></div>
+              </div>
+            </section>
+
+            <div class="resize-handle" data-resize="editor" title="拖动调整编辑区宽度"></div>
+
+            <aside class="right-stack pane">
+              <aside class="panel state-panel">
+                <div class="panel-heading">
+                  <h2>机器状态</h2>
+                  <span>寄存器 / 内存 / PC</span>
+                </div>
+                <div class="pc-box">
+                  <span>PC</span>
+                  <strong id="pcValue">0</strong>
+                </div>
+                <div class="base-control" aria-label="机器状态进制显示">
+                  <button class="base-btn active" data-base="dec">十进制</button>
+                  <button class="base-btn" data-base="bin">二进制</button>
+                  <button class="base-btn" data-base="hex">十六进制</button>
+                </div>
+                <div class="state-editor" aria-label="机器状态初始化">
+                  <div class="state-editor-row">
+                    <select id="stateTargetType" title="选择要初始化寄存器还是内存">
+                      <option value="register">寄存器</option>
+                      <option value="memory">内存</option>
+                    </select>
+                    <select id="stateTargetName" title="选择目标寄存器或内存地址"></select>
+                    <input id="stateTargetValue" type="number" value="0" title="输入初始化数值" />
+                    <button id="applyStateValueBtn" title="写入初始机器状态并重置执行">写入</button>
+                    <button id="clearStateValueBtn" title="清除当前目标的初始值">清除</button>
+                  </div>
+                  <div id="selectedStateDetail" class="selected-state-detail">点击寄存器或内存单元查看详情</div>
+                </div>
+                <h3>寄存器</h3>
+                <div id="registerGrid" class="register-grid"></div>
+                <h3>内存</h3>
+                <div id="memoryGrid" class="memory-grid"></div>
+              </aside>
+
+              <section class="panel visual-panel">
+                <div class="panel-heading">
+                  <h2>数据流可视化</h2>
+                  <span id="currentInstructionLabel">等待执行</span>
+                </div>
+                <div class="datapath-stage">
+                  <svg class="stage-lines" viewBox="0 0 980 430" preserveAspectRatio="none" aria-hidden="true">
+                    <path id="busFetch" d="M95 72 C220 72 250 72 350 72" />
+                    <path id="busRs1" d="M210 188 C300 188 345 208 422 222" />
+                    <path id="busRs2" d="M210 272 C300 272 345 246 422 238" />
+                    <path id="busAluMem" d="M548 230 C620 230 655 180 724 176" />
+                    <path id="busAluWb" d="M548 244 C620 278 690 318 790 326" />
+                    <path id="busMemWb" d="M808 188 C850 220 850 278 806 314" />
+                    <path id="busPc" d="M520 84 C650 78 730 98 850 118" />
+                  </svg>
+                  <div id="pcNode" class="stage-node pc-node">
+                    <span>PC</span>
+                    <strong>0</strong>
+                  </div>
+                  <div id="instructionNode" class="stage-node instruction-node">
+                    <span>Instruction</span>
+                    <strong>等待执行</strong>
+                  </div>
+                  <div id="registerFileNode" class="stage-node register-file-node">
+                    <span>Register File</span>
+                    <strong>rs1 / rs2</strong>
+                  </div>
+                  <div id="rs1Node" class="stage-chip rs1-chip">rs1</div>
+                  <div id="rs2Node" class="stage-chip rs2-chip">rs2 / imm</div>
+                  <div id="aluNode" class="stage-node alu-stage-node">
+                    <span>ALU</span>
+                    <strong>运算</strong>
+                  </div>
+                  <div id="memoryNode" class="stage-node memory-stage-node">
+                    <span>Memory</span>
+                    <strong>load / store</strong>
+                  </div>
+                  <div id="writebackNode" class="stage-node writeback-node">
+                    <span>Write Back</span>
+                    <strong>rd</strong>
+                  </div>
+                  <div id="branchNode" class="stage-node branch-node">
+                    <span>Branch</span>
+                    <strong>PC 更新</strong>
+                  </div>
+                </div>
+                <p id="stepExplanation" class="explanation">
+                  点击“单步执行”，观察寄存器、ALU、内存和 PC 的变化。
+                </p>
+              </section>
+
+              <section class="panel notes-panel">
+                <div class="panel-heading">
+                  <h2>教学备注</h2>
+                  <span>案例讲解记录</span>
+                </div>
+                <label class="notes-editor notes-title">
+                  案例标题
+                  <input id="caseTitleInput" type="text" placeholder="例如：访存与回写演示" />
+                </label>
+                <label class="notes-editor">
+                  教学目标
+                  <textarea id="teachingGoalInput" rows="3" placeholder="写下本案例希望学生理解的概念"></textarea>
+                </label>
+                <label class="notes-editor">
+                  讲解步骤
+                  <textarea id="teachingNotesInput" rows="5" placeholder="记录课堂讲解顺序、关键观察点或提问"></textarea>
+                </label>
+              </section>
+
+            </aside>
+
+            <section class="panel preview-panel">
+              <div class="panel-heading">
+                <h2>汇编预览</h2>
+                <span>结构化指令</span>
+              </div>
+              <pre id="assemblyPreview" class="code-preview"></pre>
+              <pre id="jsonPreview" class="json-preview"></pre>
+            </section>
+
+            <section class="panel log-panel">
+              <div class="panel-heading">
+                <h2>执行日志与教学反馈</h2>
+                <span>为什么结果会变</span>
+              </div>
+              <div id="errorBox" class="error-box" hidden></div>
+              <ol id="executionLog" class="execution-log"></ol>
+            </section>
+          </section>
+        </section>
+
+        <section id="examples" class="view">
+          <div class="page-panel">
+            <h2>示例案例</h2>
+            <p>选择一个预置案例，一键加载到工作台演示。</p>
+            <div id="exampleList" class="example-list"></div>
+          </div>
+        </section>
+
+        <section id="harmony" class="view">
+          <div class="page-panel harmony-page">
+            <h2>OpenHarmony 概念可视化</h2>
+            <p>
+              本页面只展示分布式软总线和模块协同思想，不做真实系统通信，避免偏离 RISC-V 教学主线。
+            </p>
+            <div class="harmony-diagram">
+              <div class="harmony-node">教学主机</div>
+              <div class="harmony-link">分布式软总线概念</div>
+              <div class="harmony-node">平板展示</div>
+              <div class="harmony-node">传感器模块</div>
+              <div class="harmony-link">状态同步</div>
+              <div class="harmony-node">课堂大屏</div>
+            </div>
+            <ul class="concept-list">
+              <li>多设备协同可以扩展未来课堂演示场景。</li>
+              <li>当前 MVP 只保留概念展示页，不引入真实通信复杂度。</li>
+              <li>核心教学价值仍是 RISC-V 指令执行过程可视化。</li>
+            </ul>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="./src/instructions.js"></script>
+    <script src="./src/simulator.js"></script>
+    <script src="./src/datapath.js"></script>
+    <script src="./src/ui-utils.js"></script>
+    <script src="./src/case-format.js"></script>
+    <script src="./src/operand-model.js"></script>
+    <script src="./src/machine-state.js"></script>
+    <script src="./openharmony-bridge.js"></script>
+    <script src="./src/app.js"></script>
+  </body>
+</html>

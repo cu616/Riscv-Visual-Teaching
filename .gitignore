@@ -13,6 +13,17 @@ desktop/vite.config.js
 desktop/vite.config.d.ts
 self-desktop/release/
 self-desktop-runtime.log
+openharmony-port/entry/build/
+openharmony-port/build/
+openharmony-port/.hvigor/
+openharmony-port/.hvigor-user*/
+openharmony-port/.npm-cache/
+openharmony-port/.oh-sdk/
+openharmony-port/.idea/
+openharmony-port/local.properties
+openharmony-port/tools/node.exe
+openharmony-port/oh_modules/
+openharmony-port/entry/oh_modules/
 logs/
 *.log
 .DS_Store

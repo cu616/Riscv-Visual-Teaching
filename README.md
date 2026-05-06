@@ -24,7 +24,8 @@ Blockly 不需要账号、注册或 API。此前桌面白屏主要来自 Electro
 6. [长期自动化开发任务：非 Blockly 主线工程化](docs/长期自动化开发任务_非Blockly主线工程化.md)
 7. [自动化开发执行记录](docs/自动化开发执行记录.md)
 8. [长期任务 v0.4：案例工程化与初始状态闭环](docs/长期任务_v0.4_案例工程化与初始状态闭环.md)
-9. [Blockly 迁移阶段方案](docs/Blockly迁移阶段方案.md)
+9. [OpenHarmony ArkWeb 移植版说明](openharmony-port/README.md)
+10. [Blockly 迁移阶段方案](docs/Blockly迁移阶段方案.md)
 
 ## 运行非 Blockly 主线原型
 
@@ -80,6 +81,32 @@ npm.cmd run self:package:win
 
 ```text
 self-desktop/release/win-unpacked/
+```
+
+## OpenHarmony / 香橙派移植版
+
+当前已单开 `openharmony-port/`，用于把现有 `app/` 静态资源化后放入 OpenHarmony ArkTS 壳，通过 ArkWeb 加载本地 rawfile 页面。该版本暂时移除可见的数据流动画区域，并预留 `OpenHarmonyBridge` 给后续原生保存、导入和 HDC 真机部署验证。
+
+本地结构烟测：
+
+```powershell
+npm.cmd run oh:sync
+npm.cmd run oh:smoke
+```
+
+也可以直接运行组合检查：
+
+```powershell
+npm.cmd run oh:check
+```
+
+详细说明见：
+
+```text
+openharmony-port/README.md
+openharmony-port/docs/移植记录.md
+openharmony-port/docs/HDC部署检查清单.md
+openharmony-port/docs/OH开发经验与AI接手须知.md
 ```
 
 ## 运行 Blockly 技术验证版

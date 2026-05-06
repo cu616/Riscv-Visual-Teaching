@@ -1,0 +1,23 @@
+{
+  "devices": {
+    "general": [
+      "tablet",
+      "default"
+    ]
+  },
+  "production": {
+    "removedSysCaps": [
+      "SystemCapability.Multimedia.Media.AVTranscoder",
+      "SystemCapability.Communication.FusionConnectivity.Core",
+      "SystemCapability.Resourceschedule.BackgroundProcessManager",
+      "SystemCapability.ResourceSchedule.BackgroundProcessManager",
+      "SystemCapability.ArkUI.ArkUI.Circle",
+      "SystemCapability.Test.PerfTest",
+      "SystemCapability.Ability.AgentRuntime.Core",
+      "SystemCapability.ArkUi.Graphics3D",
+      "SystemCapability.Security.CertificateManagerDialog",
+      "SystemCapability.Notification.NotificationSettings",
+      "SystemCapability.Applications.IntelligentScene"
+    ]
+  }
+}
