@@ -1,0 +1,16 @@
+{
+  "string": [
+    {
+      "name": "app_name",
+      "value": "RISC-V可视化教学"
+    },
+    {
+      "name": "module_desc",
+      "value": "非Blockly自研积木OpenHarmony移植版"
+    },
+    {
+      "name": "entryability_desc",
+      "value": "ArkWeb承载的RISC-V教学应用"
+    }
+  ]
+}

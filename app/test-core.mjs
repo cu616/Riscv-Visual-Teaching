@@ -9,12 +9,15 @@ const context = {
 };
 vm.createContext(context);
 
-for (const file of ["./app/src/instructions.js", "./app/src/simulator.js"]) {
+for (const file of ["./app/src/instructions.js", "./app/src/simulator.js", "./app/src/case-format.js", "./app/src/operand-model.js", "./app/src/machine-state.js"]) {
   vm.runInContext(readFileSync(file, "utf8"), context, { filename: file });
 }
 
 const { EXAMPLES, parseProgram, formatAssembly } = context.window.RiscVTeaching;
 const { createInitialState, executeInstruction } = context.window.RiscVSimulator;
+const { createTeachingCasePayload, parseTeachingCasePayload } = context.window.RiscVCaseFormat;
+const operandModel = context.window.RiscVOperandModel;
+const machineState = context.window.RiscVMachineState;
 
 function assert(condition, message) {
   if (!condition) {
@@ -120,6 +123,79 @@ assert(state.registers.x0 === 0, "x0 writes must be ignored");
 
 const shamtError = parseProgram([{ id: "bad", opcode: "slli", rd: "x1", rs1: "x0", shamt: 32 }]);
 assert(shamtError.errors.length === 1, "shamt outside 0..31 should be rejected");
+
+const savedCase = createTeachingCasePayload({
+  displayBase: "hex",
+  instructions: [{ id: "save-1", opcode: "addi", rd: "x1", rs1: "x0", imm: 5, x: 36, y: 96 }],
+  looseOperands: [{ id: "loose-1", kind: "register", value: "x2", x: 140, y: 180 }],
+  initialState: { registers: { x1: 5 }, memory: { 16: 99 } },
+  notes: { title: "demo", goal: "show addi", steps: "demo notes" }
+});
+const roundTrippedCase = parseTeachingCasePayload(JSON.stringify(savedCase));
+assert(roundTrippedCase.displayBase === "hex", "saved case should preserve display base");
+assert(roundTrippedCase.instructions.length === 1, "saved case should preserve instructions");
+assert(roundTrippedCase.looseOperands.length === 1, "saved case should preserve loose operands");
+assert(roundTrippedCase.initialState.registers.x1 === 5, "saved case should preserve initial registers");
+assert(roundTrippedCase.initialState.memory[16] === 99, "saved case should preserve initial memory");
+assert(roundTrippedCase.notes.title === "demo", "saved case should preserve note title");
+assert(roundTrippedCase.notes.goal === "show addi", "saved case should preserve note goal");
+assert(roundTrippedCase.notes.steps === "demo notes", "saved case should preserve note steps");
+
+const legacyNotesCase = parseTeachingCasePayload({
+  instructions: [],
+  notes: "legacy note"
+});
+assert(legacyNotesCase.notes.steps === "legacy note", "legacy string notes should remain readable");
+
+const loose = operandModel.createLooseOperand({ kind: "register", value: "x3" }, { x: 12, y: 24 }, () => "loose-created");
+assert(loose.id === "loose-created", "operand model should create predictable loose operand ids");
+assert(loose.kind === "register" && loose.value === "x3", "operand model should preserve loose operand data");
+
+const detachedInstructions = operandModel.detachPayloadSource(
+  [{ id: "i1", opcode: "add", rd: "x1", rs1: "x2", rs2: "x3" }],
+  { detach: { instructionId: "i1", field: "rs1" } }
+);
+assert(detachedInstructions[0].rs1 === undefined, "detach should clear the source field");
+
+const attachedInstructions = operandModel.attachOperandToInstruction(
+  detachedInstructions,
+  { kind: "register", value: "x4" },
+  { instructionId: "i1", field: "rs1" },
+  { rs1: "register" }
+);
+assert(attachedInstructions[0].rs1 === "x4", "attach should write operand value into target field");
+
+const normalizedLoose = operandModel.normalizeLooseOperands([
+  { kind: "register", value: "x1" },
+  { kind: "bad", value: "nope" },
+  { kind: "immediate", value: 8, x: "120", y: "180" }
+]);
+assert(normalizedLoose.length === 2, "normalization should drop unsupported loose operand kinds");
+assert(normalizedLoose[0].x === 36 && normalizedLoose[0].y === 96, "normalization should default missing loose operand positions");
+assert(normalizedLoose[1].x === 120 && normalizedLoose[1].y === 180, "normalization should parse numeric loose operand positions");
+
+const normalizedInitial = machineState.normalizeInitialState({
+  registers: { x0: 99, x1: "16", bad: 5, x2: 3.5 },
+  memory: { 16: "99", "-4": 1, nope: 2 }
+});
+assert(normalizedInitial.registers.x0 === undefined, "initial state should not persist x0 overrides");
+assert(normalizedInitial.registers.x1 === 16, "initial state should parse register integers");
+assert(normalizedInitial.registers.bad === undefined, "initial state should drop unknown registers");
+assert(normalizedInitial.memory[16] === 99, "initial state should parse memory integers");
+assert(normalizedInitial.memory[-4] === undefined, "initial state should drop negative memory addresses");
+
+const initializedState = machineState.createStateFromInitial(createInitialState, normalizedInitial);
+assert(initializedState.registers.x0 === 0, "initialized machine state should keep x0 zero");
+assert(initializedState.registers.x1 === 16, "initialized machine state should apply register overrides");
+assert(initializedState.memory[16] === 99, "initialized machine state should apply memory overrides");
+
+const changedInitial = machineState.setInitialValue(normalizedInitial, "register", "x3", "27");
+assert(changedInitial.registers.x3 === 27, "setInitialValue should write register values");
+const changedMemoryInitial = machineState.setInitialValue(changedInitial, "memory", "32", "-5");
+assert(changedMemoryInitial.memory[32] === -5, "setInitialValue should write memory values");
+const clearedInitial = machineState.clearInitialValue(changedMemoryInitial, "register", "x3");
+assert(clearedInitial.registers.x3 === undefined, "clearInitialValue should remove register overrides");
+assert(machineState.listMemoryAddresses(changedMemoryInitial).includes(32), "memory target list should include custom addresses");
 
 const unsignedAndJalrProgram = parseProgram([
   { id: "u1", opcode: "addi", rd: "x1", rs1: "x0", imm: -1 },

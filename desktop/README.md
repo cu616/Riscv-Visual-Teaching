@@ -76,3 +76,15 @@ npm.cmd --prefix .\desktop run package:win
 - 数据流动画迁移阶段暂不重做视觉，只先保留抽象展示区域。
 - 标签帽已经具备独立连接模型，但视觉仍需在浏览器/Electron 中继续微调到“左侧贴边小积木”效果。
 - Windows 打包已完成一次目录包验收。后续如再次遇到 Electron 运行时缺失，优先运行 `repair:binaries`，不要直接整包删除重装。
+
+提交到仓库：
+
+- `desktop/` 是 Blockly 桌面版工程源码目录，可以提交。
+- 应提交的内容包括 `desktop/src/`、`desktop/electron/`、`desktop/package.json`、`desktop/package-lock.json`、`desktop/vite.config.ts`、`desktop/tsconfig*.json`、`desktop/scripts/` 和本文档。
+- 不应提交 `desktop/node_modules/`、`desktop/dist/`、`desktop/dist-electron/`、`desktop/release/`、`desktop/.cache/`、`desktop/downloads/`、`desktop/manual-win-*`、`desktop/*.tsbuildinfo`、`desktop/vite.config.js`、`desktop/vite.config.d.ts`。
+- 提交前建议运行：
+
+```powershell
+npm.cmd --prefix .\desktop run check
+npm.cmd --prefix .\desktop run test:core
+```

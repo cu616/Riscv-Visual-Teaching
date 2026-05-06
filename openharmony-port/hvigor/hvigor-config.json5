@@ -1,0 +1,15 @@
+{
+  "modelVersion": "5.0.0",
+  "dependencies": {},
+  "properties": {
+    "hvigor.dependency.useNpm": true
+  },
+  "execution": {
+  },
+  "logging": {
+  },
+  "debugging": {
+  },
+  "nodeOptions": {
+  }
+}

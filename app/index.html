@@ -23,12 +23,25 @@
       <main>
         <section id="workspace" class="view active">
           <section class="toolbar" aria-label="执行控制">
-            <button id="stepBtn" class="primary">单步执行</button>
-            <button id="autoBtn">自动执行</button>
-            <button id="pauseBtn">暂停</button>
-            <button id="resetBtn">重置</button>
+            <div class="debug-controls" aria-label="分步调试">
+              <button id="prevBtn" title="上一步">◀ 上一步</button>
+              <button id="stepBtn" class="primary" title="下一步">▶ 下一步</button>
+              <button id="pauseBtn" title="暂停">Ⅱ 暂停</button>
+              <button id="resetBtn" title="重置">↻ 重置</button>
+            </div>
+            <button id="autoBtn" title="自动执行">▶ 自动执行</button>
             <button id="clearProgramBtn">清空程序</button>
+            <button id="saveProgramBtn">保存案例</button>
+            <label class="file-button">
+              导入案例
+              <input id="importProgramInput" type="file" accept=".json,.riscvteach.json,application/json" />
+            </label>
             <button id="demoModeBtn">演示模式</button>
+            <div class="execution-progress" aria-label="执行进度">
+              <span id="executionProgressText">0 / 0</span>
+              <progress id="executionProgressBar" value="0" max="1"></progress>
+            </div>
+            <span id="debugHint" class="debug-hint">上一步只回退执行状态</span>
             <span id="runState" class="status-pill">就绪</span>
           </section>
 
@@ -36,7 +49,7 @@
             <aside class="panel toolbox-panel pane">
               <div class="panel-heading">
                 <h2>指令积木</h2>
-                <span>Blockly 风格</span>
+                <span>自研积木</span>
               </div>
               <div class="block-palette" aria-label="指令积木分类">
                 <div class="block-group">
@@ -157,6 +170,7 @@
                     <select id="stateTargetName" title="选择目标寄存器或内存地址"></select>
                     <input id="stateTargetValue" type="number" value="0" title="输入初始化数值" />
                     <button id="applyStateValueBtn" title="写入初始机器状态并重置执行">写入</button>
+                    <button id="clearStateValueBtn" title="清除当前目标的初始值">清除</button>
                   </div>
                   <div id="selectedStateDetail" class="selected-state-detail">点击寄存器或内存单元查看详情</div>
                 </div>
@@ -217,6 +231,25 @@
                 </p>
               </section>
 
+              <section class="panel notes-panel">
+                <div class="panel-heading">
+                  <h2>教学备注</h2>
+                  <span>案例讲解记录</span>
+                </div>
+                <label class="notes-editor notes-title">
+                  案例标题
+                  <input id="caseTitleInput" type="text" placeholder="例如：访存与回写演示" />
+                </label>
+                <label class="notes-editor">
+                  教学目标
+                  <textarea id="teachingGoalInput" rows="3" placeholder="写下本案例希望学生理解的概念"></textarea>
+                </label>
+                <label class="notes-editor">
+                  讲解步骤
+                  <textarea id="teachingNotesInput" rows="5" placeholder="记录课堂讲解顺序、关键观察点或提问"></textarea>
+                </label>
+              </section>
+
             </aside>
 
             <section class="panel preview-panel">
@@ -273,6 +306,11 @@
 
     <script src="./src/instructions.js"></script>
     <script src="./src/simulator.js"></script>
+    <script src="./src/datapath.js"></script>
+    <script src="./src/ui-utils.js"></script>
+    <script src="./src/case-format.js"></script>
+    <script src="./src/operand-model.js"></script>
+    <script src="./src/machine-state.js"></script>
     <script src="./src/app.js"></script>
   </body>
 </html>
