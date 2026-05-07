@@ -36,6 +36,12 @@
               导入案例
               <input id="importProgramInput" type="file" accept=".json,.riscvteach.json,application/json" />
             </label>
+            <button id="harmonyWorkspaceToggleBtn" title="在工作台中显示 OpenHarmony 硬件通信视角">OpenHarmony 展示</button>
+            <div id="harmonyWorkspaceControls" class="harmony-workspace-controls" hidden aria-label="OpenHarmony 展示控制">
+              <button id="harmonyWorkspaceResetBtn" title="重置 OpenHarmony 展示步骤" aria-label="重置 OpenHarmony 展示步骤">↻</button>
+              <button id="harmonyWorkspacePrevBtn" title="OpenHarmony 上一步" aria-label="OpenHarmony 上一步">◀</button>
+              <button id="harmonyWorkspaceNextBtn" class="primary" title="OpenHarmony 下一步" aria-label="OpenHarmony 下一步">▶</button>
+            </div>
             <button id="demoModeBtn">演示模式</button>
             <div class="execution-progress" aria-label="执行进度">
               <span id="executionProgressText">0 / 0</span>
@@ -147,6 +153,15 @@
             <div class="resize-handle" data-resize="editor" title="拖动调整编辑区宽度"></div>
 
             <aside class="right-stack pane">
+              <section id="workspaceHarmonyPanel" class="panel visual-panel workspace-harmony-panel" hidden>
+                <div class="panel-heading">
+                  <h2>OpenHarmony 展示</h2>
+                  <span>硬件积木通信视角</span>
+                </div>
+                <div id="workspaceHarmonySummary" class="workspace-harmony-summary"></div>
+                <div id="workspaceHarmonyCanvas" class="workspace-harmony-canvas" aria-live="polite"></div>
+              </section>
+
               <aside class="panel state-panel">
                 <div class="panel-heading">
                   <h2>机器状态</h2>
@@ -282,23 +297,64 @@
 
         <section id="harmony" class="view">
           <div class="page-panel harmony-page">
-            <h2>OpenHarmony 概念可视化</h2>
-            <p>
-              本页面只展示分布式软总线和模块协同思想，不做真实系统通信，避免偏离 RISC-V 教学主线。
-            </p>
-            <div class="harmony-diagram">
-              <div class="harmony-node">教学主机</div>
-              <div class="harmony-link">分布式软总线概念</div>
-              <div class="harmony-node">平板展示</div>
-              <div class="harmony-node">传感器模块</div>
-              <div class="harmony-link">状态同步</div>
-              <div class="harmony-node">课堂大屏</div>
+            <div class="harmony-hero">
+              <div>
+                <p class="section-kicker">OpenHarmony 硬件积木固化视图</p>
+                <h2>把工作台里的软件积木，映射成原本硬件积木的通信状态</h2>
+                <p>
+                  本页不再空泛展示概念，而是读取“工作台”中当前指令积木和下方操作数积木的连接结果。
+                  虚线表示指令块识别到寄存器、立即数、标签等子积木的连接状态；星闪链路表示每个指令硬件积木与香橙派软总线相连。
+                </p>
+              </div>
+              <div class="harmony-summary" aria-label="固化流程">
+                <span>工作台状态读取</span>
+                <span>连接状态识别</span>
+                <span>星闪通信入网</span>
+                <span>软总线固化展示</span>
+              </div>
             </div>
-            <ul class="concept-list">
-              <li>多设备协同可以扩展未来课堂演示场景。</li>
-              <li>当前 MVP 只保留概念展示页，不引入真实通信复杂度。</li>
-              <li>核心教学价值仍是 RISC-V 指令执行过程可视化。</li>
-            </ul>
+
+            <div class="harmony-layout">
+              <aside class="harmony-panel harmony-controls">
+                <div class="panel-heading">
+                  <div>
+                    <h3>状态来源</h3>
+                    <span>自动跟随工作台当前程序</span>
+                  </div>
+                </div>
+                <div id="harmonyProgramSummary" class="harmony-program-summary"></div>
+                <button id="harmonyGoWorkspaceBtn" class="primary">回到工作台调整积木</button>
+                <div class="harmony-step-controls">
+                  <button id="harmonyNextStepBtn" class="primary">推进一步</button>
+                  <button id="harmonyResetStepBtn">重置流程</button>
+                </div>
+                <ol id="harmonyFlowList" class="harmony-flow-list"></ol>
+                <ul id="harmonyCapabilityList" class="capability-list"></ul>
+              </aside>
+
+              <section class="harmony-panel harmony-stage" aria-label="软件积木到硬件积木通信映射图">
+                <div class="softbus-card">
+                  <div class="softbus-title">
+                    <span>香橙派 / OpenHarmony 软总线</span>
+                    <strong>近场协调中心</strong>
+                  </div>
+                  <p>BusCenter 维护逻辑网络，Discovery 发现指令积木，Connection 选择星闪链路，Trans 固化当前程序状态。</p>
+                  <div class="softbus-pipeline" aria-label="软总线工作流程">
+                    <div class="pipeline-step active" data-step="0">读取工作台</div>
+                    <div class="pipeline-step" data-step="1">识别连接</div>
+                    <div class="pipeline-step" data-step="2">星闪入网</div>
+                    <div class="pipeline-step" data-step="3">状态传输</div>
+                    <div class="pipeline-step" data-step="4">固化展示</div>
+                  </div>
+                </div>
+                <div id="atomCanvas" class="hardware-block-canvas" aria-live="polite"></div>
+              </section>
+            </div>
+
+            <div class="concept-list harmony-note">
+              <p><strong>对应关系：</strong>工作台中的一条指令大积木对应一个硬件指令积木；它下方的寄存器、立即数、标签等小积木对应硬件子积木；虚线表示本地连接状态识别，星闪图标表示指令积木与香橙派之间的近场通信链路。</p>
+              <p><strong>项目取舍：</strong>这是早期硬件积木方案的软件化表达。真实硬件版需要每个积木上报连接关系；当前软件版直接读取工作台数据，以便在答辩中说明“硬件设想如何被软件模拟替代”。</p>
+            </div>
           </div>
         </section>
       </main>
