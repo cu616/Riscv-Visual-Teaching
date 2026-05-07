@@ -35,6 +35,14 @@
     resetBtn: document.getElementById("resetBtn"),
     saveProgramBtn: document.getElementById("saveProgramBtn"),
     importProgramInput: document.getElementById("importProgramInput"),
+    harmonyWorkspaceToggleBtn: document.getElementById("harmonyWorkspaceToggleBtn"),
+    harmonyWorkspaceControls: document.getElementById("harmonyWorkspaceControls"),
+    harmonyWorkspaceResetBtn: document.getElementById("harmonyWorkspaceResetBtn"),
+    harmonyWorkspacePrevBtn: document.getElementById("harmonyWorkspacePrevBtn"),
+    harmonyWorkspaceNextBtn: document.getElementById("harmonyWorkspaceNextBtn"),
+    workspaceHarmonyPanel: document.getElementById("workspaceHarmonyPanel"),
+    workspaceHarmonySummary: document.getElementById("workspaceHarmonySummary"),
+    workspaceHarmonyCanvas: document.getElementById("workspaceHarmonyCanvas"),
     stateTargetType: document.getElementById("stateTargetType"),
     stateTargetName: document.getElementById("stateTargetName"),
     stateTargetValue: document.getElementById("stateTargetValue"),
@@ -57,6 +65,15 @@
     stepExplanation: document.getElementById("stepExplanation"),
     executionProgressText: document.getElementById("executionProgressText"),
     executionProgressBar: document.getElementById("executionProgressBar"),
+    harmonyStage: document.querySelector(".harmony-stage"),
+    atomCanvas: document.getElementById("atomCanvas"),
+    harmonyProgramSummary: document.getElementById("harmonyProgramSummary"),
+    harmonyFlowList: document.getElementById("harmonyFlowList"),
+    harmonyCapabilityList: document.getElementById("harmonyCapabilityList"),
+    harmonyGoWorkspaceBtn: document.getElementById("harmonyGoWorkspaceBtn"),
+    harmonyNextStepBtn: document.getElementById("harmonyNextStepBtn"),
+    harmonyResetStepBtn: document.getElementById("harmonyResetStepBtn"),
+    harmonyPipelineSteps: document.querySelectorAll(".pipeline-step"),
     visualNodes: [
       "pcNode",
       "instructionNode",
@@ -97,7 +114,9 @@
     displayBase: "dec",
     pendingOperand: null,
     initialState: { registers: {}, memory: {} },
-    notes: { title: "", goal: "", steps: "" }
+    notes: { title: "", goal: "", steps: "" },
+    harmonyWorkspaceMode: false,
+    harmonyStep: 0
   };
   const runtime = {
     isOpenHarmony: Boolean(window.OpenHarmonyBridge)
@@ -121,6 +140,7 @@
     bindEvents();
     renderOperandPalette();
     renderExamples();
+    renderHarmony();
     renderAll();
   }
 
@@ -144,11 +164,22 @@
     dom.pauseBtn.addEventListener("click", pauseAutoRun);
     dom.saveProgramBtn.addEventListener("click", saveProgramFile);
     dom.importProgramInput.addEventListener("change", (event) => importProgramFile(event.target.files?.[0] || null));
+    dom.harmonyWorkspaceToggleBtn.addEventListener("click", toggleHarmonyWorkspaceMode);
+    dom.harmonyWorkspaceResetBtn.addEventListener("click", () => setHarmonyStep(0));
+    dom.harmonyWorkspacePrevBtn.addEventListener("click", () => setHarmonyStep(app.harmonyStep - 1));
+    dom.harmonyWorkspaceNextBtn.addEventListener("click", () => setHarmonyStep(app.harmonyStep + 1));
     dom.stateTargetType.addEventListener("change", renderStateTargetSelector);
     dom.applyStateValueBtn.addEventListener("click", applyInitialStateValue);
     dom.clearStateValueBtn.addEventListener("click", clearInitialStateValue);
     [dom.caseTitleInput, dom.teachingGoalInput, dom.teachingNotesInput].forEach((input) => {
       input.addEventListener("input", updateNotesFromInputs);
+    });
+    dom.harmonyGoWorkspaceBtn.addEventListener("click", () => switchView("workspace"));
+    dom.harmonyNextStepBtn.addEventListener("click", () => {
+      setHarmonyStep(app.harmonyStep + 1);
+    });
+    dom.harmonyResetStepBtn.addEventListener("click", () => {
+      setHarmonyStep(0);
     });
     dom.baseButtons.forEach((button) => {
       button.addEventListener("click", () => setDisplayBase(button.dataset.base));
@@ -376,6 +407,22 @@
     renderPendingOperandState();
     updateExecutionProgress();
     updateRunState();
+    renderHarmony();
+  }
+
+  function toggleHarmonyWorkspaceMode() {
+    app.harmonyWorkspaceMode = !app.harmonyWorkspaceMode;
+    document.body.classList.toggle("harmony-workspace-mode", app.harmonyWorkspaceMode);
+    dom.harmonyWorkspaceToggleBtn.classList.toggle("primary", app.harmonyWorkspaceMode);
+    dom.harmonyWorkspaceToggleBtn.setAttribute("aria-pressed", String(app.harmonyWorkspaceMode));
+    dom.harmonyWorkspaceControls.hidden = !app.harmonyWorkspaceMode;
+    dom.workspaceHarmonyPanel.hidden = !app.harmonyWorkspaceMode;
+    renderHarmony();
+  }
+
+  function setHarmonyStep(step) {
+    app.harmonyStep = (step + 5) % 5;
+    renderHarmony();
   }
 
   function updateNotesFromInputs() {
@@ -409,8 +456,14 @@
       const card = document.createElement("article");
       card.className = `instruction-card ${def.color}-block`;
       card.style.position = "absolute";
-      card.style.left = `${instruction.x ?? 36}px`;
-      card.style.top = `${instruction.y ?? 96}px`;
+      const x = instruction.x ?? 36;
+      const y = instruction.y ?? 96;
+      const harmonyX = 228;
+      const harmonyY = 96 + index * 176;
+      card.style.left = `${x}px`;
+      card.style.top = `${y}px`;
+      card.style.setProperty("--oh-dx", `${harmonyX - x}px`);
+      card.style.setProperty("--oh-dy", `${harmonyY - y}px`);
       card.dataset.id = instruction.id;
       if (instruction.id === app.lastExecutedInstructionId || (!app.lastExecutedInstructionId && index === app.state.pc && !app.state.halted)) {
         card.classList.add("active");
@@ -423,6 +476,7 @@
           <div class="opcode-label">${instruction.opcode.toUpperCase()}</div>
           <button class="delete-btn" title="删除指令">×</button>
         </div>
+        <span class="workspace-starlight-label">星闪连接技术</span>
         <div class="operand-rail">${renderSlots(instruction, def)}</div>
         ${renderInstructionWarning(instruction)}
       `;
@@ -612,6 +666,7 @@
         const kind = FIELD_KINDS[field] || "register";
         return `
           <div class="slot ${kind === "immediate" ? "editable-immediate-slot" : ""} ${ui.isAddressField(instruction.opcode, field) ? "address-slot" : ""}" data-field="${field}" data-kind="${kind}">
+            <span class="workspace-recognition-label">连接状态识别</span>
             <span class="slot-label">${field}</span>
             ${renderSlotValue(kind, value, field)}
           </div>
@@ -1574,6 +1629,213 @@
     dom.executionProgressText.textContent = `${done} / ${total}`;
     dom.executionProgressBar.max = Math.max(total, 1);
     dom.executionProgressBar.value = done;
+  }
+
+  function renderHarmony() {
+    if (!dom.atomCanvas) return;
+    const instructions = orderedInstructions();
+    const parsed = parseProgram(app.rawInstructions);
+    const errorByIndex = harmonyErrorsByInstruction(parsed.errors);
+    const step = app.harmonyStep;
+    document.body.dataset.harmonyStep = String(step);
+    dom.harmonyStage.dataset.step = String(step);
+    dom.harmonyPipelineSteps.forEach((step, index) => {
+      step.classList.toggle("active", index === app.harmonyStep);
+      step.classList.toggle("complete", index < app.harmonyStep);
+    });
+    renderWorkspaceHarmony(instructions, errorByIndex, step);
+    if (instructions.length === 0) {
+      dom.harmonyProgramSummary.innerHTML = `
+        <strong>当前没有可固化的硬件积木</strong>
+        <span>请先回到工作台添加指令积木。</span>
+      `;
+      dom.atomCanvas.innerHTML = `
+        <div class="empty-hardware-state">
+          <strong>等待工作台状态</strong>
+          <span>指令积木出现后，这里会显示它与香橙派软总线、下方操作数小积木之间的连接关系。</span>
+        </div>
+      `;
+      renderHarmonyStatus([], 0);
+      return;
+    }
+
+    const labels = instructions.filter((instruction) => instruction.labelTag).length;
+    const operandCount = instructions.reduce((sum, instruction) => sum + harmonyOperandsForInstruction(instruction).length, 0);
+    const errorCount = errorByIndex.size;
+    dom.harmonyProgramSummary.innerHTML = `
+      <strong>${instructions.length} 个指令硬件积木已入网</strong>
+      <span>${operandCount} 个下挂小积木被识别，${labels} 个标签帽被固化。</span>
+      <span class="${errorCount ? "harmony-error-text" : ""}">${errorCount ? `${errorCount} 个积木存在错误，已在图中标红。` : "当前汇编结构有效，可继续推进联网流程。"}</span>
+      <span>当前 PC=${app.state.pc}，执行状态：${app.state.halted ? "已结束" : "可继续单步"}。</span>
+    `;
+    dom.atomCanvas.innerHTML = instructions.map((instruction, index) => renderHardwareInstructionBlock(instruction, index, errorByIndex.get(index))).join("");
+    renderHarmonyStatus(instructions, operandCount);
+  }
+
+  function renderWorkspaceHarmony(instructions, errorByIndex, step) {
+    if (!dom.workspaceHarmonyPanel) return;
+    dom.workspaceHarmonyPanel.dataset.step = String(step);
+    if (!app.harmonyWorkspaceMode) return;
+    if (instructions.length === 0) {
+      dom.workspaceHarmonySummary.innerHTML = `<strong>暂无硬件通信视图</strong><span>先在左侧工作台添加指令积木。</span>`;
+      dom.workspaceHarmonyCanvas.innerHTML = `<div class="empty-hardware-state compact">等待工作台状态</div>`;
+      return;
+    }
+    const operandCount = instructions.reduce((sum, instruction) => sum + harmonyOperandsForInstruction(instruction).length, 0);
+    dom.workspaceHarmonySummary.innerHTML = `
+      <strong>${instructions.length} 个指令积木，${operandCount} 个小积木</strong>
+      <span>当前处于第 ${step + 1} 步：${harmonyStepTitle(step)}。</span>
+      ${errorByIndex.size ? `<span class="harmony-error-text">${errorByIndex.size} 个积木存在错误。</span>` : ""}
+    `;
+    dom.workspaceHarmonyCanvas.innerHTML = instructions.map((instruction, index) => renderMiniHardwareBlock(instruction, index, errorByIndex.get(index))).join("");
+  }
+
+  function harmonyStepTitle(step) {
+    return ["读取工作台", "识别连接", "星闪入网", "状态传输", "固化展示"][step] || "读取工作台";
+  }
+
+  function renderMiniHardwareBlock(instruction, index, error) {
+    const operands = harmonyOperandsForInstruction(instruction);
+    return `
+      <article class="mini-hardware-block ${error ? "has-error" : ""}">
+        <div class="mini-starlight">${renderStarlightIcon()}</div>
+        <div class="mini-main">
+          <span>${index + 1}</span>
+          <strong>${escapeHtml(instruction.opcode.toUpperCase())}</strong>
+        </div>
+        <div class="mini-operands">
+          ${operands.map((operand) => `<span class="${operand.kind}">${escapeHtml(ui.formatOperand(operand.kind, operand.value))}</span>`).join("")}
+        </div>
+        ${error ? `<div class="mini-error">${escapeHtml(error)}</div>` : ""}
+      </article>
+    `;
+  }
+
+  function renderHardwareInstructionBlock(instruction, index, error) {
+    const operands = harmonyOperandsForInstruction(instruction);
+    const labelTag = instruction.labelTag
+      ? `<div class="hardware-label-chip">标签帽 L${escapeHtml(instruction.labelTag)}</div>`
+      : "";
+    return `
+      <article class="hardware-row ${error ? "has-error" : ""}" style="--delay: ${index * 90}ms">
+        <div class="starlight-link" aria-label="星闪传输协议">
+          <i class="starlight-pulse pulse-out" aria-hidden="true"></i>
+          <i class="starlight-pulse pulse-back" aria-hidden="true"></i>
+          <span class="starlight-icon">${renderStarlightIcon()}</span>
+          <span>星闪传输协议</span>
+        </div>
+        <div class="hardware-instruction">
+          ${labelTag}
+          <div class="hardware-main-block">
+            <span>指令积木块 ${index + 1}</span>
+            <strong>${escapeHtml(instruction.opcode.toUpperCase())}</strong>
+          </div>
+          <div class="connection-recognition">
+            <i class="vertical-recognition-dot dot-down" aria-hidden="true"></i>
+            <i class="vertical-recognition-dot dot-up" aria-hidden="true"></i>
+            <span>连接状态识别</span>
+          </div>
+          <div class="hardware-operands" style="--operand-count: ${Math.max(operands.length, 1)}; --line-inset: calc((100% - ${Math.max(operands.length - 1, 0) * 12}px) / ${Math.max(operands.length, 1)} / 2)">
+            ${operands.length ? operands.map(renderHardwareOperand).join("") : `<div class="hardware-empty-operand">等待小积木连接</div>`}
+          </div>
+          ${error ? `<div class="hardware-error">${escapeHtml(error)}</div>` : ""}
+        </div>
+      </article>
+    `;
+  }
+
+  function harmonyErrorsByInstruction(errors) {
+    const map = new Map();
+    errors.forEach((error) => {
+      const match = String(error).match(/第\s*(\d+)\s*条/);
+      const index = match ? Number(match[1]) - 1 : 0;
+      map.set(index, error);
+    });
+    return map;
+  }
+
+  function harmonyOperandsForInstruction(instruction) {
+    const def = INSTRUCTION_DEFS[instruction.opcode];
+    if (!def) return [];
+    const operands = def.fields
+      .filter((field) => instruction[field] !== undefined && instruction[field] !== "")
+      .map((field) => ({
+        field,
+        kind: FIELD_KINDS[field] || "register",
+        value: instruction[field]
+      }));
+    if (instruction.labelTag) {
+      operands.unshift({ field: "labelTag", kind: "label", value: instruction.labelTag });
+    }
+    return operands;
+  }
+
+  function renderHardwareOperand(operand) {
+    const label = operand.kind === "register"
+      ? "寄存器积木块"
+      : operand.kind === "immediate"
+        ? "立即数/地址积木块"
+        : "标签积木块";
+    return `
+      <div class="hardware-operand ${operand.kind}">
+        <span>${escapeHtml(operand.field)}</span>
+        <strong>${escapeHtml(ui.formatOperand(operand.kind, operand.value))}</strong>
+        <em>${label}</em>
+      </div>
+    `;
+  }
+
+  function renderHarmonyStatus(instructions, operandCount) {
+    const stepLabels = [
+      "只读取工作台快照：先看到每个指令硬件积木，连接线暂不出现。",
+      "连接状态识别：指令块与寄存器、立即数、标签等小积木之间出现虚线。",
+      "星闪入网：每个指令块与香橙派软总线建立近场通信链路。",
+      "状态传输：软总线开始接收每个指令积木上报的连接关系。",
+      "固化展示：所有识别结果稳定显示，可用于课堂讲解或答辩说明。"
+    ];
+    dom.harmonyFlowList.innerHTML = [
+      "读取工作台：把当前软件积木序列作为硬件积木快照。",
+      "连接状态识别：识别每条指令下方已经吸附的寄存器、立即数、标签等小积木。",
+      "星闪入网：每个指令积木通过近场链路把自身状态发给香橙派。",
+      "软总线固化：BusCenter 维护逻辑设备关系，Trans 传输连接状态。",
+      "课堂展示：OpenHarmony 页把原本硬件方案的软件模拟结果画成框图。"
+    ].map((item, index) => `<li class="${index === app.harmonyStep ? "active" : ""}">${item}</li>`).join("");
+
+    const capabilities = [
+      stepLabels[app.harmonyStep],
+      `已固化 ${instructions.length} 条指令积木，按工作台从上到下顺序入网。`,
+      `已识别 ${operandCount} 个下挂小积木，虚线表示它们与指令块的连接状态。`,
+      "工作台中拖动、添加、删除或修改操作数后，本图会随 renderAll 自动更新。"
+    ];
+    if (app.harmonyStep >= 2) {
+      capabilities.push("星闪链路出现后，代表指令硬件积木已开始向香橙派上报自身状态。");
+    }
+    if (instructions.some((instruction) => instruction.labelTag || instruction.label)) {
+      capabilities.push("标签帽和标签引用会作为独立小积木参与固化，适合解释分支跳转目标。");
+    }
+    if (instructions.some((instruction) => ["lw", "sw"].includes(instruction.opcode))) {
+      capabilities.push("访存指令会显示地址相关小积木，便于说明硬件积木如何识别地址拼接。");
+    }
+    dom.harmonyCapabilityList.innerHTML = capabilities.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+  }
+
+  function renderStarlightIcon() {
+    return `
+      <svg viewBox="0 0 42 42" aria-hidden="true" focusable="false">
+        <path d="M21 4l3.7 10.1L35 17.8l-10.3 3.7L21 32l-3.7-10.5L7 17.8l10.3-3.7L21 4z"></path>
+        <path d="M9 29c7 5 17 5 24 0"></path>
+        <path d="M13 34c5 3 11 3 16 0"></path>
+      </svg>
+    `;
+  }
+
+  function escapeHtml(value) {
+    return String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
   }
 
   function renderExamples() {
