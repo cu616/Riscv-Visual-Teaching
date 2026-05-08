@@ -25,6 +25,18 @@
     demoModeBtn: document.getElementById("demoModeBtn"),
     programCanvas: document.getElementById("programCanvas"),
     programDropZone: document.getElementById("programDropZone"),
+    zoomOutBtn: document.getElementById("zoomOutBtn"),
+    zoomResetBtn: document.getElementById("zoomResetBtn"),
+    zoomInBtn: document.getElementById("zoomInBtn"),
+    statePanelBtn: document.getElementById("statePanelBtn"),
+    stateCloseBtn: document.getElementById("stateCloseBtn"),
+    previewPanelBtn: document.getElementById("previewPanelBtn"),
+    previewCloseBtn: document.getElementById("previewCloseBtn"),
+    notesPanelBtn: document.getElementById("notesPanelBtn"),
+    notesToggleBtn: document.getElementById("notesToggleBtn"),
+    statePanel: document.querySelector(".state-panel"),
+    previewPanel: document.querySelector(".preview-panel"),
+    notesPanel: document.querySelector(".notes-panel"),
     customRegisterInput: document.getElementById("customRegisterInput"),
     customImmInput: document.getElementById("customImmInput"),
     customLabelInput: document.getElementById("customLabelInput"),
@@ -95,6 +107,8 @@
     timer: null
     ,
     displayBase: "dec",
+    canvasScale: 1,
+    openPanels: { state: false, preview: false, notes: false },
     pendingOperand: null,
     initialState: { registers: {}, memory: {} },
     notes: { title: "", goal: "", steps: "" }
@@ -122,6 +136,10 @@
     renderOperandPalette();
     renderExamples();
     renderAll();
+    setCanvasScale(app.canvasScale);
+    togglePanel("state", false);
+    togglePanel("preview", false);
+    togglePanel("notes", false);
   }
 
   function renderRegisterSelector() {
@@ -142,6 +160,15 @@
     dom.stepBtn.addEventListener("click", stepProgram);
     dom.autoBtn.addEventListener("click", startAutoRun);
     dom.pauseBtn.addEventListener("click", pauseAutoRun);
+    dom.zoomOutBtn.addEventListener("click", () => adjustCanvasScale(-0.1));
+    dom.zoomInBtn.addEventListener("click", () => adjustCanvasScale(0.1));
+    dom.zoomResetBtn.addEventListener("click", () => setCanvasScale(1));
+    dom.statePanelBtn.addEventListener("click", () => togglePanel("state"));
+    dom.stateCloseBtn.addEventListener("click", () => togglePanel("state", false));
+    dom.previewPanelBtn.addEventListener("click", () => togglePanel("preview"));
+    dom.previewCloseBtn.addEventListener("click", () => togglePanel("preview", false));
+    dom.notesPanelBtn.addEventListener("click", () => togglePanel("notes"));
+    dom.notesToggleBtn.addEventListener("click", () => togglePanel("notes"));
     dom.saveProgramBtn.addEventListener("click", saveProgramFile);
     dom.importProgramInput.addEventListener("change", (event) => importProgramFile(event.target.files?.[0] || null));
     dom.stateTargetType.addEventListener("change", renderStateTargetSelector);
@@ -185,10 +212,10 @@
       dom.programDropZone.classList.remove("accepting");
       const payload = ui.readDragPayload(event);
       if (payload && payload.kind === "instruction") {
-        const rect = dom.programCanvas.getBoundingClientRect();
+        const point = canvasPointFromClient(event.clientX, event.clientY);
         addInstruction(payload.opcode, {
-          x: Math.max(24, event.clientX - rect.left + dom.programCanvas.scrollLeft - 140),
-          y: Math.max(96, event.clientY - rect.top + dom.programCanvas.scrollTop)
+          x: Math.max(24, point.x - 140),
+          y: Math.max(96, point.y)
         });
       } else if (payload && operandModel.isOperandKind(payload.kind)) {
         addLooseOperand(payload, event);
@@ -203,15 +230,16 @@
       event.preventDefault();
       const payload = ui.readDragPayload(event);
       if (payload && payload.kind === "instruction") {
-        const rect = dom.programCanvas.getBoundingClientRect();
+        const point = canvasPointFromClient(event.clientX, event.clientY);
         addInstruction(payload.opcode, {
-          x: Math.max(24, event.clientX - rect.left + dom.programCanvas.scrollLeft - 140),
-          y: Math.max(96, event.clientY - rect.top + dom.programCanvas.scrollTop)
+          x: Math.max(24, point.x - 140),
+          y: Math.max(96, point.y)
         });
       } else if (payload && operandModel.isOperandKind(payload.kind)) {
         addLooseOperand(payload, event);
       }
     });
+    bindCanvasPinchZoom();
 
     dom.resetBtn.addEventListener("click", resetMachine);
     document.addEventListener("keydown", handleGlobalKeyDown);
@@ -257,6 +285,57 @@
   function switchView(viewId) {
     dom.tabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.view === viewId));
     dom.views.forEach((view) => view.classList.toggle("active", view.id === viewId));
+  }
+
+  function setCanvasScale(scale) {
+    app.canvasScale = ui.clamp(Number(scale.toFixed(2)), 0.55, 1.6);
+    document.documentElement.style.setProperty("--canvas-scale", app.canvasScale);
+    dom.zoomResetBtn.textContent = `${Math.round(app.canvasScale * 100)}%`;
+  }
+
+  function adjustCanvasScale(delta) {
+    setCanvasScale(app.canvasScale + delta);
+  }
+
+  function canvasPointFromClient(clientX, clientY) {
+    const rect = dom.programCanvas.getBoundingClientRect();
+    return {
+      x: (clientX - rect.left + dom.programCanvas.scrollLeft) / app.canvasScale,
+      y: (clientY - rect.top + dom.programCanvas.scrollTop) / app.canvasScale
+    };
+  }
+
+  function togglePanel(panel, forced) {
+    app.openPanels[panel] = typeof forced === "boolean" ? forced : !app.openPanels[panel];
+    document.body.classList.toggle("state-panel-open", app.openPanels.state);
+    document.body.classList.toggle("preview-panel-open", app.openPanels.preview);
+    document.body.classList.toggle("notes-panel-open", app.openPanels.notes);
+    dom.statePanelBtn.classList.toggle("primary", app.openPanels.state);
+    dom.previewPanelBtn.classList.toggle("primary", app.openPanels.preview);
+    dom.notesPanelBtn.classList.toggle("primary", app.openPanels.notes);
+    dom.notesToggleBtn.textContent = app.openPanels.notes ? "收起" : "展开";
+  }
+
+  function bindCanvasPinchZoom() {
+    let pinch = null;
+    dom.programCanvas.addEventListener("touchstart", (event) => {
+      if (event.touches.length !== 2) return;
+      const distance = touchDistance(event.touches[0], event.touches[1]);
+      pinch = { distance, scale: app.canvasScale };
+    }, { passive: true });
+    dom.programCanvas.addEventListener("touchmove", (event) => {
+      if (!pinch || event.touches.length !== 2) return;
+      event.preventDefault();
+      const distance = touchDistance(event.touches[0], event.touches[1]);
+      setCanvasScale(pinch.scale * (distance / Math.max(pinch.distance, 1)));
+    }, { passive: false });
+    dom.programCanvas.addEventListener("touchend", (event) => {
+      if (event.touches.length < 2) pinch = null;
+    }, { passive: true });
+  }
+
+  function touchDistance(a, b) {
+    return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
   }
 
   function orderedInstructions() {
@@ -306,10 +385,10 @@
 
   function addLooseOperand(payload, event) {
     app.rawInstructions = operandModel.detachPayloadSource(app.rawInstructions, payload);
-    const rect = dom.programCanvas.getBoundingClientRect();
+    const point = canvasPointFromClient(event.clientX, event.clientY);
     app.looseOperands.push(operandModel.createLooseOperand(payload, {
-      x: Math.max(12, event.clientX - rect.left + dom.programCanvas.scrollLeft - 40),
-      y: Math.max(82, event.clientY - rect.top + dom.programCanvas.scrollTop - 16)
+      x: Math.max(12, point.x - 40),
+      y: Math.max(82, point.y - 16)
     }));
     resetMachine(false);
     renderAll();
@@ -496,8 +575,8 @@
     card.addEventListener("pointermove", (event) => {
       if (!start) return;
       const canvas = dom.programCanvas.getBoundingClientRect();
-      const x = Math.max(12, Math.min(start.x + event.clientX - start.pointerX, canvas.width - 330));
-      const y = Math.max(82, start.y + event.clientY - start.pointerY);
+      const x = Math.max(12, Math.min(start.x + (event.clientX - start.pointerX) / app.canvasScale, canvas.width / app.canvasScale - 330));
+      const y = Math.max(82, start.y + (event.clientY - start.pointerY) / app.canvasScale);
       card.style.left = `${x}px`;
       card.style.top = `${y}px`;
       showSortGuide(y, previewInsertIndex(instruction.id, y));
@@ -954,9 +1033,10 @@
     if (payload.type === "instruction" || payload.type === "move-instruction") {
       const rect = dom.programCanvas.getBoundingClientRect();
       if (point.x >= rect.left && point.x <= rect.right && point.y >= rect.top && point.y <= rect.bottom) {
+        const world = canvasPointFromClient(point.x, point.y);
         const position = {
-          x: Math.max(24, point.x - rect.left + dom.programCanvas.scrollLeft - 140),
-          y: Math.max(96, point.y - rect.top + dom.programCanvas.scrollTop)
+          x: Math.max(24, world.x - 140),
+          y: Math.max(96, world.y)
         };
         if (payload.type === "instruction") {
           addInstruction(payload.opcode, position);
@@ -1139,8 +1219,8 @@
     chip.addEventListener("pointermove", (event) => {
       if (!start) return;
       const canvas = dom.programCanvas.getBoundingClientRect();
-      const x = Math.max(12, Math.min(start.x + event.clientX - start.pointerX, canvas.width - 96));
-      const y = Math.max(82, start.y + event.clientY - start.pointerY);
+      const x = Math.max(12, Math.min(start.x + (event.clientX - start.pointerX) / app.canvasScale, canvas.width / app.canvasScale - 96));
+      const y = Math.max(82, start.y + (event.clientY - start.pointerY) / app.canvasScale);
       chip.style.left = `${x}px`;
       chip.style.top = `${y}px`;
       highlightNearestAttachTarget(operand.kind, event.clientX, event.clientY);

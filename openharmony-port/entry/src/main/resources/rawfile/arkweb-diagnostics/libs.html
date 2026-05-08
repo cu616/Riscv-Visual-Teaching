@@ -135,9 +135,17 @@
             <section class="panel editor-panel pane">
               <div class="panel-heading">
                 <h2>指令编辑区</h2>
-                <span>拖拽拼接 RV32I 教学指令</span>
+                <span>专注拼接，右上角打开辅助视图</span>
               </div>
               <div id="programCanvas" class="program-canvas">
+                <div class="canvas-corner-tools" aria-label="编辑区视图工具">
+                  <button id="zoomOutBtn" class="tool-btn" title="缩小视图">-</button>
+                  <button id="zoomResetBtn" class="tool-btn scale-readout" title="视图比例">100%</button>
+                  <button id="zoomInBtn" class="tool-btn" title="放大视图">+</button>
+                  <button id="statePanelBtn" class="tool-btn" title="打开机器状态">机器</button>
+                  <button id="previewPanelBtn" class="tool-btn" title="打开汇编预览">代码</button>
+                  <button id="notesPanelBtn" class="tool-btn" title="打开教学说明">说明</button>
+                </div>
                 <div id="programDropZone" class="program-drop-zone">
                   把左侧指令大积木拖到这里，可上下拖动排序
                 </div>
@@ -151,7 +159,7 @@
               <aside class="panel state-panel">
                 <div class="panel-heading">
                   <h2>机器状态</h2>
-                  <span>寄存器 / 内存 / PC</span>
+                  <button id="stateCloseBtn" class="tool-btn" title="收起">收起</button>
                 </div>
                 <div class="pc-box">
                   <span>PC</span>
@@ -235,20 +243,22 @@
               <section class="panel notes-panel">
                 <div class="panel-heading">
                   <h2>教学备注</h2>
-                  <span>案例讲解记录</span>
+                  <button id="notesToggleBtn" class="tool-btn" title="展开/收起">展开</button>
                 </div>
-                <label class="notes-editor notes-title">
-                  案例标题
-                  <input id="caseTitleInput" type="text" placeholder="例如：访存与回写演示" />
-                </label>
-                <label class="notes-editor">
-                  教学目标
-                  <textarea id="teachingGoalInput" rows="3" placeholder="写下本案例希望学生理解的概念"></textarea>
-                </label>
-                <label class="notes-editor">
-                  讲解步骤
-                  <textarea id="teachingNotesInput" rows="5" placeholder="记录课堂讲解顺序、关键观察点或提问"></textarea>
-                </label>
+                <div class="notes-body">
+                  <label class="notes-editor notes-title">
+                    案例标题
+                    <input id="caseTitleInput" type="text" placeholder="例如：访存与回写演示" />
+                  </label>
+                  <label class="notes-editor">
+                    教学目标
+                    <textarea id="teachingGoalInput" rows="3" placeholder="写下本案例希望学生理解的概念"></textarea>
+                  </label>
+                  <label class="notes-editor">
+                    讲解步骤
+                    <textarea id="teachingNotesInput" rows="5" placeholder="记录课堂讲解顺序、关键观察点或提问"></textarea>
+                  </label>
+                </div>
               </section>
 
             </aside>
@@ -256,7 +266,7 @@
             <section class="panel preview-panel">
               <div class="panel-heading">
                 <h2>汇编预览</h2>
-                <span>结构化指令</span>
+                <button id="previewCloseBtn" class="tool-btn" title="收起">收起</button>
               </div>
               <pre id="assemblyPreview" class="code-preview"></pre>
               <pre id="jsonPreview" class="json-preview"></pre>
@@ -311,6 +321,6 @@
     <script src="../app/src/ui-utils.js"></script>
     <script src="../app/src/case-format.js"></script>
     <script src="../app/src/operand-model.js"></script>
-    <script src="../app/src/machine-state.js"></script>
+    <script src="../app/src/machine-state.js"></script>
   </body>
 </html>
