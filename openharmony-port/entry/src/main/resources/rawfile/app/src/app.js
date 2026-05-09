@@ -10,6 +10,7 @@
   } = window.RiscVTeaching;
   const { createInitialState, executeInstruction } = window.RiscVSimulator;
   const datapath = window.RiscVDatapath;
+  const stateAnimation = window.RiscVStateAnimation;
   const ui = window.RiscVUiUtils;
   const caseFormat = window.RiscVCaseFormat;
   const operandModel = window.RiscVOperandModel;
@@ -20,7 +21,6 @@
     views: document.querySelectorAll(".view"),
     instructionList: document.getElementById("instructionList"),
     assemblyPreview: document.getElementById("assemblyPreview"),
-    jsonPreview: document.getElementById("jsonPreview"),
     clearProgramBtn: document.getElementById("clearProgramBtn"),
     demoModeBtn: document.getElementById("demoModeBtn"),
     programCanvas: document.getElementById("programCanvas"),
@@ -28,12 +28,11 @@
     zoomOutBtn: document.getElementById("zoomOutBtn"),
     zoomResetBtn: document.getElementById("zoomResetBtn"),
     zoomInBtn: document.getElementById("zoomInBtn"),
-    statePanelBtn: document.getElementById("statePanelBtn"),
-    stateCloseBtn: document.getElementById("stateCloseBtn"),
-    previewPanelBtn: document.getElementById("previewPanelBtn"),
-    previewCloseBtn: document.getElementById("previewCloseBtn"),
-    notesPanelBtn: document.getElementById("notesPanelBtn"),
-    notesToggleBtn: document.getElementById("notesToggleBtn"),
+    assistPanelBtn: document.getElementById("assistPanelBtn"),
+    assistCloseBtn: document.getElementById("assistCloseBtn"),
+    assistPanel: document.getElementById("assistPanel"),
+    assistTabs: document.querySelectorAll(".assist-tab"),
+    assistSections: document.querySelectorAll(".assist-section"),
     statePanel: document.querySelector(".state-panel"),
     previewPanel: document.querySelector(".preview-panel"),
     notesPanel: document.querySelector(".notes-panel"),
@@ -44,6 +43,7 @@
     stepBtn: document.getElementById("stepBtn"),
     autoBtn: document.getElementById("autoBtn"),
     pauseBtn: document.getElementById("pauseBtn"),
+    animationSpeedSelect: document.getElementById("animationSpeedSelect"),
     resetBtn: document.getElementById("resetBtn"),
     saveProgramBtn: document.getElementById("saveProgramBtn"),
     importProgramInput: document.getElementById("importProgramInput"),
@@ -52,7 +52,9 @@
     harmonyWorkspaceResetBtn: document.getElementById("harmonyWorkspaceResetBtn"),
     harmonyWorkspacePrevBtn: document.getElementById("harmonyWorkspacePrevBtn"),
     harmonyWorkspaceNextBtn: document.getElementById("harmonyWorkspaceNextBtn"),
+    harmonyWorkspaceCollapseBtn: document.getElementById("harmonyWorkspaceCollapseBtn"),
     workspaceHarmonyPanel: document.getElementById("workspaceHarmonyPanel"),
+    workspaceHarmonyBody: document.getElementById("workspaceHarmonyBody"),
     workspaceHarmonySummary: document.getElementById("workspaceHarmonySummary"),
     workspaceHarmonyCanvas: document.getElementById("workspaceHarmonyCanvas"),
     stateTargetType: document.getElementById("stateTargetType"),
@@ -73,8 +75,6 @@
     errorBox: document.getElementById("errorBox"),
     exampleList: document.getElementById("exampleList"),
     operandPalette: document.getElementById("operandPalette"),
-    currentInstructionLabel: document.getElementById("currentInstructionLabel"),
-    stepExplanation: document.getElementById("stepExplanation"),
     executionProgressText: document.getElementById("executionProgressText"),
     executionProgressBar: document.getElementById("executionProgressBar"),
     harmonyStage: document.querySelector(".harmony-stage"),
@@ -103,17 +103,19 @@
       "busAluWb",
       "busMemWb",
       "busPc"
-    ].map((id) => document.getElementById(id))
+    ].map((id) => document.getElementById(id)).filter(Boolean)
   };
 
   const app = {
     rawInstructions: [
-      createDefaultInstruction("addi", { x: 36, y: 96 }),
-      { ...createDefaultInstruction("addi", { x: 36, y: 250 }), rd: "x2", imm: 7 },
-      { ...createDefaultInstruction("add", { x: 36, y: 404 }), rd: "x3", rs1: "x1", rs2: "x2" }
+      createDefaultInstruction("addi", { x: 336, y: 96 }),
+      { ...createDefaultInstruction("addi", { x: 336, y: 250 }), rd: "x2", imm: 7 },
+      { ...createDefaultInstruction("add", { x: 336, y: 404 }), rd: "x3", rs1: "x1", rs2: "x2" }
     ],
     looseOperands: [],
+    selectedInstructionIds: [],
     selectedLooseOperandIds: [],
+    selectionBox: null,
     parsedProgram: [],
     state: createInitialState(),
     changedRegisters: [],
@@ -123,13 +125,19 @@
     animationTimers: [],
     timer: null
     ,
+    autoRunRequested: false,
+    isAnimating: false,
+    animationProgress: null,
+    animationSpeed: 1,
     displayBase: "dec",
     canvasScale: 1,
-    openPanels: { state: false, preview: false, notes: false },
+    assistOpen: false,
+    activeAssistTab: "machine",
     pendingOperand: null,
     initialState: { registers: {}, memory: {} },
     notes: { title: "", goal: "", steps: "" },
     harmonyWorkspaceMode: false,
+    harmonyWorkspaceCollapsed: false,
     harmonyStep: 0
   };
   const runtime = {
@@ -157,9 +165,7 @@
     renderHarmony();
     renderAll();
     setCanvasScale(app.canvasScale);
-    togglePanel("state", false);
-    togglePanel("preview", false);
-    togglePanel("notes", false);
+    toggleAssistPanel(false);
   }
 
   function renderRegisterSelector() {
@@ -180,21 +186,27 @@
     dom.stepBtn.addEventListener("click", stepProgram);
     dom.autoBtn.addEventListener("click", startAutoRun);
     dom.pauseBtn.addEventListener("click", pauseAutoRun);
+    dom.animationSpeedSelect.addEventListener("change", () => {
+      app.animationSpeed = Number(dom.animationSpeedSelect.value) || 1;
+    });
     dom.zoomOutBtn.addEventListener("click", () => adjustCanvasScale(-0.1));
     dom.zoomInBtn.addEventListener("click", () => adjustCanvasScale(0.1));
     dom.zoomResetBtn.addEventListener("click", () => setCanvasScale(1));
-    dom.statePanelBtn.addEventListener("click", () => togglePanel("state"));
-    dom.stateCloseBtn.addEventListener("click", () => togglePanel("state", false));
-    dom.previewPanelBtn.addEventListener("click", () => togglePanel("preview"));
-    dom.previewCloseBtn.addEventListener("click", () => togglePanel("preview", false));
-    dom.notesPanelBtn.addEventListener("click", () => togglePanel("notes"));
-    dom.notesToggleBtn.addEventListener("click", () => togglePanel("notes"));
+    dom.assistPanelBtn.addEventListener("click", () => toggleAssistPanel());
+    dom.assistCloseBtn.addEventListener("click", () => toggleAssistPanel(false));
+    dom.assistTabs.forEach((tab) => {
+      tab.addEventListener("click", () => {
+        setAssistTab(tab.dataset.sideTab);
+        toggleAssistPanel(true);
+      });
+    });
     dom.saveProgramBtn.addEventListener("click", saveProgramFile);
     dom.importProgramInput.addEventListener("change", (event) => importProgramFile(event.target.files?.[0] || null));
     dom.harmonyWorkspaceToggleBtn.addEventListener("click", toggleHarmonyWorkspaceMode);
     dom.harmonyWorkspaceResetBtn.addEventListener("click", () => setHarmonyStep(0));
     dom.harmonyWorkspacePrevBtn.addEventListener("click", () => setHarmonyStep(app.harmonyStep - 1));
     dom.harmonyWorkspaceNextBtn.addEventListener("click", () => setHarmonyStep(app.harmonyStep + 1));
+    dom.harmonyWorkspaceCollapseBtn.addEventListener("click", toggleWorkspaceHarmonyPanel);
     dom.stateTargetType.addEventListener("change", renderStateTargetSelector);
     dom.applyStateValueBtn.addEventListener("click", applyInitialStateValue);
     dom.clearStateValueBtn.addEventListener("click", clearInitialStateValue);
@@ -230,17 +242,26 @@
       chip.addEventListener("dragstart", (event) => {
         event.dataTransfer.setData("application/json", JSON.stringify({ kind: "instruction", opcode: chip.dataset.opcode }));
         event.dataTransfer.effectAllowed = "copy";
+        showProgramDropHint();
+        document.body.classList.add("dragging-instruction");
+      });
+      chip.addEventListener("dragend", () => {
+        hideProgramDropHint();
+        document.body.classList.remove("dragging-instruction");
       });
     });
 
     dom.programDropZone.addEventListener("dragover", (event) => {
       event.preventDefault();
+      showProgramDropHint();
       dom.programDropZone.classList.add("accepting");
     });
     dom.programDropZone.addEventListener("dragleave", () => dom.programDropZone.classList.remove("accepting"));
     dom.programDropZone.addEventListener("drop", (event) => {
       event.preventDefault();
       dom.programDropZone.classList.remove("accepting");
+      hideProgramDropHint();
+      document.body.classList.remove("dragging-instruction");
       const payload = ui.readDragPayload(event);
       if (payload && payload.kind === "instruction") {
         const point = canvasPointFromClient(event.clientX, event.clientY);
@@ -255,10 +276,13 @@
 
     dom.programCanvas.addEventListener("dragover", (event) => {
       event.preventDefault();
+      if (ui.readDragPayload(event)?.kind === "instruction") showProgramDropHint();
       autoScrollCanvas(event.clientY);
     });
     dom.programCanvas.addEventListener("drop", (event) => {
       event.preventDefault();
+      hideProgramDropHint();
+      document.body.classList.remove("dragging-instruction");
       const payload = ui.readDragPayload(event);
       if (payload && payload.kind === "instruction") {
         const point = canvasPointFromClient(event.clientX, event.clientY);
@@ -271,6 +295,8 @@
       }
     });
     bindCanvasPinchZoom();
+    bindCanvasSelectionBox();
+    bindCanvasPan();
 
     dom.resetBtn.addEventListener("click", resetMachine);
     document.addEventListener("keydown", handleGlobalKeyDown);
@@ -289,19 +315,27 @@
         start = {
           kind: handle.dataset.resize,
           x: event.clientX,
+          y: event.clientY,
           toolbox: Number.parseFloat(styles.getPropertyValue("--toolbox-width")),
-          editor: document.querySelector(".editor-panel").getBoundingClientRect().width
+          assistant: Number.parseFloat(styles.getPropertyValue("--assistant-width")),
+          log: Number.parseFloat(styles.getPropertyValue("--log-height"))
         };
       });
       handle.addEventListener("pointermove", (event) => {
         if (!start) return;
         const dx = event.clientX - start.x;
         if (start.kind === "toolbox") {
-          const next = ui.clamp(start.toolbox + dx, 170, 320);
+          const next = ui.clamp(start.toolbox + dx, 170, 420);
           root.style.setProperty("--toolbox-width", `${next}px`);
-        } else {
-          const next = ui.clamp(start.editor + dx, 340, 760);
-          root.style.setProperty("--editor-width", `${next}px`);
+          enforceWorkspaceBounds();
+          renderAll();
+        } else if (start.kind === "assistant") {
+          const next = ui.clamp(start.assistant - dx, 280, 640);
+          root.style.setProperty("--assistant-width", `${next}px`);
+        } else if (start.kind === "log") {
+          const dy = event.clientY - start.y;
+          const next = ui.clamp(start.log - dy, 110, 360);
+          root.style.setProperty("--log-height", `${next}px`);
         }
       });
       handle.addEventListener("pointerup", (event) => {
@@ -336,15 +370,16 @@
     };
   }
 
-  function togglePanel(panel, forced) {
-    app.openPanels[panel] = typeof forced === "boolean" ? forced : !app.openPanels[panel];
-    document.body.classList.toggle("state-panel-open", app.openPanels.state);
-    document.body.classList.toggle("preview-panel-open", app.openPanels.preview);
-    document.body.classList.toggle("notes-panel-open", app.openPanels.notes);
-    dom.statePanelBtn.classList.toggle("primary", app.openPanels.state);
-    dom.previewPanelBtn.classList.toggle("primary", app.openPanels.preview);
-    dom.notesPanelBtn.classList.toggle("primary", app.openPanels.notes);
-    dom.notesToggleBtn.textContent = app.openPanels.notes ? "收起" : "展开";
+  function toggleAssistPanel(forced) {
+    app.assistOpen = typeof forced === "boolean" ? forced : !app.assistOpen;
+    document.body.classList.toggle("assist-panel-open", app.assistOpen);
+    dom.assistPanelBtn.classList.toggle("primary", app.assistOpen);
+  }
+
+  function setAssistTab(tabName) {
+    app.activeAssistTab = tabName || "machine";
+    dom.assistTabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.sideTab === app.activeAssistTab));
+    dom.assistSections.forEach((section) => section.classList.toggle("active", section.dataset.sideSection === app.activeAssistTab));
   }
 
   function bindCanvasPinchZoom() {
@@ -369,15 +404,91 @@
     return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
   }
 
+  function bindCanvasPan() {
+    let pan = null;
+    dom.programCanvas.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0 || event.ctrlKey) return;
+      if (event.target.closest(".instruction-card, .floating-operand-chip, .slot, .label-dock, button, input, select, textarea, .program-drop-zone")) return;
+      event.preventDefault();
+      pan = {
+        pointerId: event.pointerId,
+        x: event.clientX,
+        y: event.clientY,
+        scrollLeft: dom.programCanvas.scrollLeft,
+        scrollTop: dom.programCanvas.scrollTop
+      };
+      dom.programCanvas.setPointerCapture(event.pointerId);
+      dom.programCanvas.classList.add("panning");
+    });
+
+    dom.programCanvas.addEventListener("pointermove", (event) => {
+      if (!pan) return;
+      dom.programCanvas.scrollLeft = pan.scrollLeft - (event.clientX - pan.x);
+      dom.programCanvas.scrollTop = pan.scrollTop - (event.clientY - pan.y);
+    });
+
+    const stopPan = () => {
+      if (!pan) return;
+      dom.programCanvas.releasePointerCapture(pan.pointerId);
+      pan = null;
+      dom.programCanvas.classList.remove("panning");
+    };
+    dom.programCanvas.addEventListener("pointerup", stopPan);
+    dom.programCanvas.addEventListener("pointercancel", stopPan);
+  }
+
+  function showProgramDropHint() {
+    dom.programDropZone.hidden = false;
+  }
+
+  function hideProgramDropHint() {
+    dom.programDropZone.hidden = true;
+    dom.programDropZone.classList.remove("accepting");
+  }
+
   function orderedInstructions() {
     return [...app.rawInstructions].sort((a, b) => (a.y ?? 0) - (b.y ?? 0) || (a.x ?? 0) - (b.x ?? 0));
   }
 
   function addInstruction(opcode, position = {}) {
     const nextY = app.rawInstructions.length ? Math.max(...app.rawInstructions.map((item) => item.y ?? 0)) + 154 : 96;
-    app.rawInstructions.push(createDefaultInstruction(opcode, { x: position.x ?? 36, y: position.y ?? nextY }));
+    app.rawInstructions.push(createDefaultInstruction(opcode, { x: position.x ?? defaultInstructionX(), y: position.y ?? nextY }));
     resetMachine(false);
     renderAll();
+  }
+
+  function defaultInstructionX() {
+    const rawWidth = getComputedStyle(document.documentElement).getPropertyValue("--toolbox-width");
+    const toolboxWidth = Number.parseFloat(rawWidth) || 260;
+    return minBlockX();
+  }
+
+  function minBlockX() {
+    const rawWidth = getComputedStyle(document.documentElement).getPropertyValue("--toolbox-width");
+    const toolboxWidth = Number.parseFloat(rawWidth) || 260;
+    return toolboxWidth + 44;
+  }
+
+  function maxInstructionX() {
+    const canvas = dom.programCanvas.getBoundingClientRect();
+    return Math.max(minBlockX(), canvas.width / app.canvasScale - 330);
+  }
+
+  function maxLooseOperandX() {
+    const canvas = dom.programCanvas.getBoundingClientRect();
+    return Math.max(minBlockX(), canvas.width / app.canvasScale - 96);
+  }
+
+  function enforceWorkspaceBounds() {
+    const minX = minBlockX();
+    app.rawInstructions = app.rawInstructions.map((instruction) => ({
+      ...instruction,
+      x: Math.max(minX, instruction.x ?? minX)
+    }));
+    app.looseOperands = app.looseOperands.map((operand) => ({
+      ...operand,
+      x: Math.max(minX, operand.x ?? minX)
+    }));
   }
 
   function updateInstruction(id, field, value) {
@@ -395,6 +506,7 @@
 
   function deleteInstruction(id) {
     app.rawInstructions = app.rawInstructions.filter((instruction) => instruction.id !== id);
+    app.selectedInstructionIds = app.selectedInstructionIds.filter((selectedId) => selectedId !== id);
     resetMachine(false);
     renderAll();
   }
@@ -474,6 +586,7 @@
   }
 
   function renderAll() {
+    enforceWorkspaceBounds();
     const parsed = parseProgram(app.rawInstructions);
     app.parsedProgram = parsed.instructions;
     syncDisplayBaseControls();
@@ -489,14 +602,32 @@
     renderHarmony();
   }
 
-  function toggleHarmonyWorkspaceMode() {
-    app.harmonyWorkspaceMode = !app.harmonyWorkspaceMode;
+  function toggleHarmonyWorkspaceMode(forced) {
+    app.harmonyWorkspaceMode = typeof forced === "boolean" ? forced : !app.harmonyWorkspaceMode;
+    if (app.harmonyWorkspaceMode) {
+      app.harmonyWorkspaceCollapsed = false;
+      setAssistTab("machine");
+      toggleAssistPanel(true);
+    }
     document.body.classList.toggle("harmony-workspace-mode", app.harmonyWorkspaceMode);
     dom.harmonyWorkspaceToggleBtn.classList.toggle("primary", app.harmonyWorkspaceMode);
     dom.harmonyWorkspaceToggleBtn.setAttribute("aria-pressed", String(app.harmonyWorkspaceMode));
     dom.harmonyWorkspaceControls.hidden = !app.harmonyWorkspaceMode;
     dom.workspaceHarmonyPanel.hidden = !app.harmonyWorkspaceMode;
+    syncWorkspaceHarmonyPanel();
     renderHarmony();
+  }
+
+  function toggleWorkspaceHarmonyPanel() {
+    app.harmonyWorkspaceCollapsed = !app.harmonyWorkspaceCollapsed;
+    syncWorkspaceHarmonyPanel();
+  }
+
+  function syncWorkspaceHarmonyPanel() {
+    dom.workspaceHarmonyPanel.classList.toggle("collapsed", app.harmonyWorkspaceCollapsed);
+    dom.workspaceHarmonyBody.hidden = app.harmonyWorkspaceCollapsed;
+    dom.harmonyWorkspaceCollapseBtn.textContent = app.harmonyWorkspaceCollapsed ? "展开" : "收起";
+    dom.harmonyWorkspaceCollapseBtn.title = app.harmonyWorkspaceCollapsed ? "展开 OpenHarmony 展示栏" : "收起 OpenHarmony 展示栏";
   }
 
   function setHarmonyStep(step) {
@@ -547,6 +678,9 @@
       if (instruction.id === app.lastExecutedInstructionId || (!app.lastExecutedInstructionId && index === app.state.pc && !app.state.halted)) {
         card.classList.add("active");
       }
+      if (app.selectedInstructionIds.includes(instruction.id)) {
+        card.classList.add("selected");
+      }
       if (errors.length) card.classList.add("error");
       card.innerHTML = `
         ${renderLabelDock(instruction)}
@@ -574,9 +708,32 @@
       bindSlots(card, instruction, def);
       bindLabelDock(card, instruction);
       card.querySelector(".delete-btn").addEventListener("click", () => deleteInstruction(instruction.id));
+      card.addEventListener("click", (event) => {
+        if (Date.now() < suppressClickUntil) return;
+        if (event.target.closest(".slot, .label-dock, button, input, .operand-chip")) return;
+        if (event.ctrlKey) {
+          toggleInstructionSelection(instruction.id, true);
+        } else if (!card.classList.contains("dragging")) {
+          selectInstruction(instruction.id, false);
+        }
+      });
       dom.instructionList.appendChild(card);
     });
     renderLooseOperands();
+    updateCanvasExtent();
+  }
+
+  function updateCanvasExtent() {
+    const items = [
+      ...app.rawInstructions.map((item) => ({ x: item.x ?? defaultInstructionX(), y: item.y ?? 96, width: 360, height: 170 })),
+      ...app.looseOperands.map((item) => ({ x: item.x ?? minBlockX(), y: item.y ?? 96, width: 140, height: 80 }))
+    ];
+    const viewportWidth = dom.programCanvas.clientWidth / app.canvasScale;
+    const viewportHeight = dom.programCanvas.clientHeight / app.canvasScale;
+    const maxRight = Math.max(viewportWidth + 240, ...items.map((item) => item.x + item.width));
+    const maxBottom = Math.max(viewportHeight + 320, ...items.map((item) => item.y + item.height));
+    dom.instructionList.style.width = `${Math.ceil(maxRight)}px`;
+    dom.instructionList.style.height = `${Math.ceil(maxBottom)}px`;
   }
 
   function renderLooseOperands() {
@@ -587,7 +744,7 @@
       chip.dataset.kind = operand.kind;
       chip.dataset.value = operand.value;
       chip.textContent = ui.formatOperand(operand.kind, operand.value);
-      chip.style.left = `${operand.x ?? 36}px`;
+      chip.style.left = `${operand.x ?? minBlockX()}px`;
       chip.style.top = `${operand.y ?? 96}px`;
       chip.title = "可自由拖动；靠近对应槽位后会自动吸附。双击删除。";
       if (!runtime.isOpenHarmony) bindLooseOperandDrag(chip, operand);
@@ -616,23 +773,54 @@
     let start = null;
     card.addEventListener("pointerdown", (event) => {
       if (event.target.closest(".slot, .label-dock, button, input, .operand-chip")) return;
+      if (event.ctrlKey) {
+        toggleInstructionSelection(instruction.id, true);
+        return;
+      }
       card.setPointerCapture(event.pointerId);
+      if (!app.selectedInstructionIds.includes(instruction.id)) {
+        app.selectedInstructionIds = [instruction.id];
+        app.selectedLooseOperandIds = [];
+      }
+      const selectedInstructions = app.rawInstructions.filter((item) => app.selectedInstructionIds.includes(item.id));
+      const selectedLooseOperands = app.looseOperands.filter((item) => app.selectedLooseOperandIds.includes(item.id));
       start = {
         pointerX: event.clientX,
         pointerY: event.clientY,
         x: instruction.x ?? 36,
-        y: instruction.y ?? 96
+        y: instruction.y ?? 96,
+        instructionPositions: selectedInstructions.map((item) => ({ id: item.id, x: item.x ?? defaultInstructionX(), y: item.y ?? 96 })),
+        loosePositions: selectedLooseOperands.map((item) => ({ id: item.id, x: item.x ?? minBlockX(), y: item.y ?? 96 }))
       };
       card.classList.add("dragging");
       showSortGuide(instruction.y ?? 96);
     });
     card.addEventListener("pointermove", (event) => {
       if (!start) return;
-      const canvas = dom.programCanvas.getBoundingClientRect();
-      const x = Math.max(12, Math.min(start.x + (event.clientX - start.pointerX) / app.canvasScale, canvas.width / app.canvasScale - 330));
+      const dx = (event.clientX - start.pointerX) / app.canvasScale;
+      const dy = (event.clientY - start.pointerY) / app.canvasScale;
+      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) start.moved = true;
+      const minDx = Math.max(...start.instructionPositions.map((item) => minBlockX() - item.x), ...start.loosePositions.map((item) => minBlockX() - item.x), -Infinity);
+      const maxDx = Math.min(...start.instructionPositions.map((item) => maxInstructionX() - item.x), ...start.loosePositions.map((item) => maxLooseOperandX() - item.x), Infinity);
+      const safeDx = ui.clamp(dx, Number.isFinite(minDx) ? minDx : dx, Number.isFinite(maxDx) ? maxDx : dx);
+      const x = Math.max(minBlockX(), Math.min(start.x + safeDx, maxInstructionX()));
       const y = Math.max(82, start.y + (event.clientY - start.pointerY) / app.canvasScale);
-      card.style.left = `${x}px`;
-      card.style.top = `${y}px`;
+      start.instructionPositions.forEach((item) => {
+        const target = dom.instructionList.querySelector(`.instruction-card[data-id="${item.id}"]`);
+        if (target) {
+          target.style.left = `${item.x + safeDx}px`;
+          target.style.top = `${Math.max(82, item.y + dy)}px`;
+          target.classList.add("dragging");
+        }
+      });
+      start.loosePositions.forEach((item) => {
+        const target = dom.instructionList.querySelector(`.floating-operand-chip[data-id="${item.id}"]`);
+        if (target) {
+          target.style.left = `${item.x + safeDx}px`;
+          target.style.top = `${Math.max(82, item.y + dy)}px`;
+          target.classList.add("dragging");
+        }
+      });
       showSortGuide(y, previewInsertIndex(instruction.id, y));
       autoScrollCanvas(event.clientY);
     });
@@ -641,11 +829,50 @@
       card.releasePointerCapture(event.pointerId);
       const x = ui.snapToGrid(Number.parseFloat(card.style.left), 12);
       const y = ui.snapToGrid(Number.parseFloat(card.style.top), 12);
+      const movedInstructions = start.instructionPositions.map((item) => {
+        const target = dom.instructionList.querySelector(`.instruction-card[data-id="${item.id}"]`);
+        return {
+          id: item.id,
+          x: ui.snapToGrid(Number.parseFloat(target?.style.left || item.x), 12),
+          y: ui.snapToGrid(Number.parseFloat(target?.style.top || item.y), 12)
+        };
+      });
+      const movedLooseOperands = start.loosePositions.map((item) => {
+        const target = dom.instructionList.querySelector(`.floating-operand-chip[data-id="${item.id}"]`);
+        return {
+          id: item.id,
+          x: ui.snapToGrid(Number.parseFloat(target?.style.left || item.x), 12),
+          y: ui.snapToGrid(Number.parseFloat(target?.style.top || item.y), 12)
+        };
+      });
+      if (start.moved) suppressClickUntil = Date.now() + 180;
       start = null;
-      card.classList.remove("dragging");
+      dom.instructionList.querySelectorAll(".dragging").forEach((element) => element.classList.remove("dragging"));
       hideSortGuide();
-      moveInstruction(instruction.id, x, y);
+      moveSelectedBlocks(movedInstructions, movedLooseOperands, instruction.id, x, y);
     });
+  }
+
+  function moveSelectedBlocks(movedInstructions, movedLooseOperands, activeId, fallbackX, fallbackY) {
+    if (movedInstructions.length <= 1 && movedLooseOperands.length === 0) {
+      moveInstruction(activeId, Math.max(minBlockX(), fallbackX), fallbackY);
+      return;
+    }
+    const instructionPatch = new Map(movedInstructions.map((item) => [item.id, item]));
+    const loosePatch = new Map(movedLooseOperands.map((item) => [item.id, item]));
+    app.rawInstructions = app.rawInstructions.map((instruction) => {
+      const patch = instructionPatch.get(instruction.id);
+      return patch ? { ...instruction, x: Math.max(minBlockX(), patch.x), y: patch.y } : instruction;
+    });
+    app.looseOperands = app.looseOperands.map((operand) => {
+      const patch = loosePatch.get(operand.id);
+      return patch ? { ...operand, x: Math.max(minBlockX(), patch.x), y: patch.y } : operand;
+    });
+    if (hasInstructionOverlap(app.rawInstructions)) {
+      app.rawInstructions = normalizeInstructionLayout(app.rawInstructions);
+    }
+    resetMachine(false);
+    renderAll();
   }
 
   function restackInstructions(activeId, x, y) {
@@ -693,7 +920,7 @@
       .sort((a, b) => (a.x ?? 0) - (b.x ?? 0))
       .map((instruction, columnIndex) => ({
         ...instruction,
-        x: 36 + columnIndex * 306,
+        x: minBlockX() + columnIndex * 306,
         y: 96 + rowIndex * 86
       })));
   }
@@ -1258,14 +1485,19 @@
         return;
       }
       chip.setPointerCapture(event.pointerId);
-      app.selectedLooseOperandIds = [operand.id];
+      if (!app.selectedLooseOperandIds.includes(operand.id)) {
+        app.selectedLooseOperandIds = [operand.id];
+        app.selectedInstructionIds = [];
+      }
       chip.classList.add("selected");
       showOperandTrash();
+      const selectedLooseOperands = app.looseOperands.filter((item) => app.selectedLooseOperandIds.includes(item.id));
       start = {
         pointerX: event.clientX,
         pointerY: event.clientY,
         x: operand.x ?? 36,
-        y: operand.y ?? 96
+        y: operand.y ?? 96,
+        operands: selectedLooseOperands.map((item) => ({ id: item.id, x: item.x ?? minBlockX(), y: item.y ?? 96, kind: item.kind }))
       };
       chip.classList.add("dragging");
       document.body.classList.toggle("dragging-label", operand.kind === "label");
@@ -1273,38 +1505,55 @@
     });
     chip.addEventListener("pointermove", (event) => {
       if (!start) return;
-      const canvas = dom.programCanvas.getBoundingClientRect();
-      const x = Math.max(12, Math.min(start.x + (event.clientX - start.pointerX) / app.canvasScale, canvas.width / app.canvasScale - 96));
-      const y = Math.max(82, start.y + (event.clientY - start.pointerY) / app.canvasScale);
-      chip.style.left = `${x}px`;
-      chip.style.top = `${y}px`;
-      highlightNearestAttachTarget(operand.kind, event.clientX, event.clientY);
+      const dx = (event.clientX - start.pointerX) / app.canvasScale;
+      const dy = (event.clientY - start.pointerY) / app.canvasScale;
+      const minDx = Math.max(...start.operands.map((item) => minBlockX() - item.x));
+      const maxDx = Math.min(...start.operands.map((item) => maxLooseOperandX() - item.x));
+      const safeDx = ui.clamp(dx, minDx, maxDx);
+      start.operands.forEach((item) => {
+        const target = dom.instructionList.querySelector(`.floating-operand-chip[data-id="${item.id}"]`);
+        if (!target) return;
+        target.style.left = `${item.x + safeDx}px`;
+        target.style.top = `${Math.max(82, item.y + dy)}px`;
+        target.classList.add("dragging");
+      });
+      if (start.operands.length === 1) highlightNearestAttachTarget(operand.kind, event.clientX, event.clientY);
       updateOperandTrashHover(event.clientX, event.clientY);
       autoScrollCanvas(event.clientY);
     });
     chip.addEventListener("pointerup", (event) => {
       if (!start) return;
       chip.releasePointerCapture(event.pointerId);
+      const drag = start;
       start = null;
-      chip.classList.remove("dragging");
+      dom.instructionList.querySelectorAll(".floating-operand-chip.dragging").forEach((element) => element.classList.remove("dragging"));
       document.body.classList.remove("dragging-label");
       document.body.classList.remove("dragging-operand");
       clearAttachHints();
       const overTrash = isPointerOverOperandTrash(event.clientX, event.clientY);
       hideOperandTrash();
       if (overTrash) {
-        deleteLooseOperands([operand.id]);
+        deleteLooseOperands(drag.operands.map((item) => item.id));
         return;
       }
-      const target = findNearestAttachTarget(operand.kind, event.clientX, event.clientY);
+      const target = drag.operands.length === 1 ? findNearestAttachTarget(operand.kind, event.clientX, event.clientY) : null;
       if (target) {
         attachLooseOperand(operand, target);
         return;
       }
-      updateLooseOperand(operand.id, {
-        x: ui.snapToGrid(Number.parseFloat(chip.style.left), 12),
-        y: ui.snapToGrid(Number.parseFloat(chip.style.top), 12)
+      const patches = drag.operands.map((item) => {
+        const targetChip = dom.instructionList.querySelector(`.floating-operand-chip[data-id="${item.id}"]`);
+        return {
+          id: item.id,
+          x: ui.snapToGrid(Number.parseFloat(targetChip?.style.left || item.x), 12),
+          y: ui.snapToGrid(Number.parseFloat(targetChip?.style.top || item.y), 12)
+        };
       });
+      app.looseOperands = app.looseOperands.map((item) => {
+        const patch = patches.find((candidate) => candidate.id === item.id);
+        return patch ? { ...item, x: Math.max(minBlockX(), patch.x), y: patch.y } : item;
+      });
+      renderAll();
     });
   }
 
@@ -1387,9 +1636,10 @@
   function handleGlobalKeyDown(event) {
     if (event.key !== "Delete" && event.key !== "Backspace") return;
     if (["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) return;
-    if (!app.selectedLooseOperandIds.length) return;
+    if (!app.selectedLooseOperandIds.length && !app.selectedInstructionIds.length) return;
     event.preventDefault();
-    deleteLooseOperands(app.selectedLooseOperandIds);
+    if (app.selectedInstructionIds.length) deleteInstructions(app.selectedInstructionIds);
+    if (app.selectedLooseOperandIds.length) deleteLooseOperands(app.selectedLooseOperandIds);
   }
 
   function showOperandTrash() {
@@ -1437,12 +1687,116 @@
   function renderPreviews(errors) {
     if (errors.length) {
       dom.assemblyPreview.textContent = "请先修复指令字段错误。";
-      dom.jsonPreview.textContent = JSON.stringify({ errors }, null, 2);
       return;
     }
 
     dom.assemblyPreview.textContent = app.parsedProgram.map((instruction, index) => `${index}: ${formatAssembly(instruction)}`).join("\n") || "暂无指令";
-    dom.jsonPreview.textContent = JSON.stringify(app.parsedProgram, null, 2);
+  }
+
+  function selectInstruction(id, additive) {
+    app.selectedInstructionIds = additive ? [...new Set([...app.selectedInstructionIds, id])] : [id];
+    if (!additive) app.selectedLooseOperandIds = [];
+    renderAll();
+  }
+
+  function toggleInstructionSelection(id, additive) {
+    if (!additive) {
+      selectInstruction(id, false);
+      return;
+    }
+    app.selectedInstructionIds = app.selectedInstructionIds.includes(id)
+      ? app.selectedInstructionIds.filter((selectedId) => selectedId !== id)
+      : [...app.selectedInstructionIds, id];
+    renderAll();
+  }
+
+  function deleteInstructions(ids) {
+    app.rawInstructions = app.rawInstructions.filter((instruction) => !ids.includes(instruction.id));
+    app.selectedInstructionIds = app.selectedInstructionIds.filter((id) => !ids.includes(id));
+    resetMachine(false);
+    renderAll();
+  }
+
+  function bindCanvasSelectionBox() {
+    let start = null;
+    dom.programCanvas.addEventListener("pointerdown", (event) => {
+      if (!event.ctrlKey || event.button !== 0) return;
+      if (event.target.closest(".instruction-card, .floating-operand-chip, .slot, .label-dock, button, input, select, textarea")) return;
+      event.preventDefault();
+      const origin = canvasPointFromClient(event.clientX, event.clientY);
+      start = { pointerId: event.pointerId, origin, current: origin };
+      dom.programCanvas.setPointerCapture(event.pointerId);
+      app.selectionBox = { left: origin.x, top: origin.y, width: 0, height: 0 };
+      renderSelectionBox();
+    });
+
+    dom.programCanvas.addEventListener("pointermove", (event) => {
+      if (!start) return;
+      const current = canvasPointFromClient(event.clientX, event.clientY);
+      start.current = current;
+      app.selectionBox = {
+        left: Math.min(start.origin.x, current.x),
+        top: Math.min(start.origin.y, current.y),
+        width: Math.abs(current.x - start.origin.x),
+        height: Math.abs(current.y - start.origin.y)
+      };
+      renderSelectionBox();
+    });
+
+    dom.programCanvas.addEventListener("pointerup", (event) => {
+      if (!start) return;
+      dom.programCanvas.releasePointerCapture(start.pointerId);
+      applySelectionBox(app.selectionBox);
+      start = null;
+      app.selectionBox = null;
+      renderSelectionBox();
+    });
+  }
+
+  function renderSelectionBox() {
+    let box = document.getElementById("selectionBox");
+    if (!app.selectionBox) {
+      if (box) box.remove();
+      return;
+    }
+    if (!box) {
+      box = document.createElement("div");
+      box.id = "selectionBox";
+      box.className = "selection-box";
+      dom.instructionList.appendChild(box);
+    }
+    box.style.left = `${app.selectionBox.left}px`;
+    box.style.top = `${app.selectionBox.top}px`;
+    box.style.width = `${app.selectionBox.width}px`;
+    box.style.height = `${app.selectionBox.height}px`;
+  }
+
+  function applySelectionBox(box) {
+    if (!box || box.width < 8 || box.height < 8) return;
+    app.selectedInstructionIds = app.rawInstructions
+      .filter((instruction) => intersects(box, {
+        left: instruction.x ?? defaultInstructionX(),
+        top: instruction.y ?? 96,
+        width: 300,
+        height: 96
+      }))
+      .map((instruction) => instruction.id);
+    app.selectedLooseOperandIds = app.looseOperands
+      .filter((operand) => intersects(box, {
+        left: operand.x ?? minBlockX(),
+        top: operand.y ?? 96,
+        width: 96,
+        height: 38
+      }))
+      .map((operand) => operand.id);
+    renderAll();
+  }
+
+  function intersects(a, b) {
+    return a.left < b.left + b.width &&
+      a.left + a.width > b.left &&
+      a.top < b.top + b.height &&
+      a.top + a.height > b.top;
   }
 
   function renderState() {
@@ -1553,7 +1907,7 @@
     dom.errorBox.textContent = error || "";
   }
 
-  function stepProgram() {
+  async function stepProgram() {
     const parsed = parseProgram(app.rawInstructions);
     if (parsed.errors.length) {
       renderError(parsed.errors[0]);
@@ -1561,9 +1915,11 @@
     }
 
     try {
-      if (app.state.halted) return;
+      if (app.state.halted || app.isAnimating) return;
+      const previousState = cloneExecutionState(app.state);
+      const previousPc = app.state.pc;
       app.stateHistory.push({
-        state: cloneExecutionState(app.state),
+        state: previousState,
         changedRegisters: [...app.changedRegisters],
         changedMemoryAddresses: [...app.changedMemoryAddresses],
         lastExecutedInstructionId: app.lastExecutedInstructionId
@@ -1574,7 +1930,7 @@
       app.changedMemoryAddresses = result.changedMemoryAddresses;
       app.lastExecutedInstructionId = result.instruction?.id || null;
       renderAll();
-      renderExecutionResult(result);
+      await renderExecutionResult(result, previousState, previousPc, parsed.instructions.length);
     } catch (error) {
       pauseAutoRun();
       renderError(error.message);
@@ -1590,6 +1946,9 @@
     app.changedMemoryAddresses = snapshot.changedMemoryAddresses;
     app.lastExecutedInstructionId = snapshot.lastExecutedInstructionId;
     clearAnimationTimers();
+    stateAnimation.clearStateAnimation();
+    app.isAnimating = false;
+    app.animationProgress = null;
     renderAll();
   }
 
@@ -1603,10 +1962,37 @@
     };
   }
 
-  function renderExecutionResult(result) {
+  async function renderExecutionResult(result, previousState, previousPc, total) {
     const instruction = result.instruction;
-    dom.currentInstructionLabel.textContent = instruction ? formatAssembly(instruction) : "程序结束";
-    dom.stepExplanation.textContent = result.explanation;
+    const duration = animationDuration();
+    setAssistTab("machine");
+    toggleAssistPanel(true);
+    app.isAnimating = true;
+    app.animationProgress = { index: previousPc, total, fraction: 0, label: "start" };
+    updateExecutionProgress();
+    updateRunState();
+    await stateAnimation.playStateAnimation(result, {
+      previousState,
+      currentState: app.state,
+      duration,
+      onProgress(fraction) {
+        app.animationProgress = { index: previousPc, total, fraction, label: app.animationProgress?.label || "" };
+        updateExecutionProgress();
+      },
+      onPhase(label) {
+        app.animationProgress = { index: previousPc, total, fraction: app.animationProgress?.fraction || 0, label };
+        updateExecutionProgress();
+      }
+    });
+    app.isAnimating = false;
+    app.animationProgress = null;
+    updateExecutionProgress();
+    updateRunState();
+    if (!dom.visualNodes.length) return;
+    const currentInstructionLabel = document.getElementById("currentInstructionLabel");
+    const stepExplanation = document.getElementById("stepExplanation");
+    if (currentInstructionLabel) currentInstructionLabel.textContent = instruction ? formatAssembly(instruction) : "程序结束";
+    if (stepExplanation) stepExplanation.textContent = result.explanation;
     const plan = new Set(result.animationPlan.filter((item) => typeof item === "string"));
     dom.visualNodes.forEach((node) => node.classList.toggle("active", plan.has(node.id)));
 
@@ -1633,12 +2019,14 @@
           const node = document.getElementById(id);
           if (node) node.classList.add("active");
         });
-        dom.stepExplanation.textContent = frame.text;
+        const stepExplanation = document.getElementById("stepExplanation");
+        if (stepExplanation) stepExplanation.textContent = frame.text;
       }, index * 620);
       app.animationTimers.push(timer);
     });
     const finalTimer = window.setTimeout(() => {
-      dom.stepExplanation.textContent = result.explanation;
+      const stepExplanation = document.getElementById("stepExplanation");
+      if (stepExplanation) stepExplanation.textContent = result.explanation;
     }, frames.length * 620);
     app.animationTimers.push(finalTimer);
   }
@@ -1646,6 +2034,10 @@
   function clearAnimationTimers() {
     app.animationTimers.forEach((timer) => window.clearTimeout(timer));
     app.animationTimers = [];
+  }
+
+  function animationDuration() {
+    return Math.round(3000 / (app.animationSpeed || 1));
   }
 
   function resetMachine(render = true) {
@@ -1656,33 +2048,48 @@
     app.stateHistory = [];
     app.lastExecutedInstructionId = null;
     clearAnimationTimers();
-    dom.currentInstructionLabel.textContent = "等待执行";
-    dom.stepExplanation.textContent = "点击“单步执行”，观察寄存器、ALU、内存和 PC 的变化。";
+    stateAnimation.clearStateAnimation();
+    app.isAnimating = false;
+    app.animationProgress = null;
+    const currentInstructionLabel = document.getElementById("currentInstructionLabel");
+    const stepExplanation = document.getElementById("stepExplanation");
+    if (currentInstructionLabel) currentInstructionLabel.textContent = "等待执行";
+    if (stepExplanation) stepExplanation.textContent = "点击“单步执行”，观察寄存器、ALU、内存和 PC 的变化。";
     dom.visualNodes.forEach((node) => node.classList.remove("active"));
-    document.querySelector("#instructionNode strong").textContent = "等待执行";
-    document.querySelector("#pcNode strong").textContent = "0";
-    document.querySelector("#aluNode strong").textContent = "运算";
-    document.querySelector("#memoryNode strong").textContent = "load / store";
-    document.querySelector("#writebackNode strong").textContent = "rd";
-    document.querySelector("#branchNode strong").textContent = "PC 更新";
+    const instructionNode = document.querySelector("#instructionNode strong");
+    const pcNode = document.querySelector("#pcNode strong");
+    const aluNode = document.querySelector("#aluNode strong");
+    const memoryNode = document.querySelector("#memoryNode strong");
+    const writebackNode = document.querySelector("#writebackNode strong");
+    const branchNode = document.querySelector("#branchNode strong");
+    if (instructionNode) instructionNode.textContent = "等待执行";
+    if (pcNode) pcNode.textContent = "0";
+    if (aluNode) aluNode.textContent = "运算";
+    if (memoryNode) memoryNode.textContent = "load / store";
+    if (writebackNode) writebackNode.textContent = "rd";
+    if (branchNode) branchNode.textContent = "PC 更新";
     if (render) renderAll();
   }
 
-  function startAutoRun() {
+  async function startAutoRun() {
     if (app.timer || app.state.halted) return;
-    app.timer = window.setInterval(() => {
-      if (app.state.halted) {
-        pauseAutoRun();
-        return;
+    app.autoRunRequested = true;
+    app.timer = true;
+    updateRunState();
+    while (app.autoRunRequested && !app.state.halted) {
+      await stepProgram();
+      if (app.autoRunRequested && !app.state.halted) {
+        await delay(160);
       }
-      stepProgram();
-    }, 3200);
+    }
+    app.timer = null;
+    app.autoRunRequested = false;
     updateRunState();
   }
 
   function pauseAutoRun() {
     if (app.timer) {
-      window.clearInterval(app.timer);
+      app.autoRunRequested = false;
       app.timer = null;
     }
     updateRunState();
@@ -1690,11 +2097,13 @@
 
   function updateRunState() {
     document.body.classList.toggle("is-running", Boolean(app.timer));
-    dom.prevBtn.disabled = app.stateHistory.length === 0 || Boolean(app.timer);
-    dom.stepBtn.disabled = app.state.halted || Boolean(app.timer);
+    dom.prevBtn.disabled = app.stateHistory.length === 0 || Boolean(app.timer) || app.isAnimating;
+    dom.stepBtn.disabled = app.state.halted || Boolean(app.timer) || app.isAnimating;
     dom.autoBtn.disabled = app.state.halted || Boolean(app.timer);
-    dom.pauseBtn.disabled = !app.timer;
-    if (app.timer) {
+    dom.pauseBtn.disabled = !app.timer && !app.isAnimating;
+    if (app.isAnimating) {
+      dom.runState.textContent = "动画中";
+    } else if (app.timer) {
       dom.runState.textContent = "自动执行中";
     } else if (app.state.halted) {
       dom.runState.textContent = "已结束";
@@ -1706,9 +2115,21 @@
   function updateExecutionProgress() {
     const total = app.parsedProgram.length;
     const done = app.state.halted ? total : Math.min(app.state.pc, total);
-    dom.executionProgressText.textContent = `${done} / ${total}`;
-    dom.executionProgressBar.max = Math.max(total, 1);
-    dom.executionProgressBar.value = done;
+    if (app.animationProgress) {
+      const index = Math.min(app.animationProgress.index + 1, Math.max(total, 1));
+      const percent = Math.round((app.animationProgress.fraction || 0) * 100);
+      dom.executionProgressText.textContent = `${index}/${total} · ${percent}%`;
+      dom.executionProgressBar.max = Math.max(total * 100, 1);
+      dom.executionProgressBar.value = Math.min(total * 100, app.animationProgress.index * 100 + percent);
+      return;
+    }
+    dom.executionProgressText.textContent = `${done}/${total}`;
+    dom.executionProgressBar.max = Math.max(total * 100, 1);
+    dom.executionProgressBar.value = done * 100;
+  }
+
+  function delay(ms) {
+    return new Promise((resolve) => window.setTimeout(resolve, ms));
   }
 
   function renderHarmony() {
@@ -1933,7 +2354,7 @@
       button.addEventListener("click", () => {
         const example = EXAMPLES.find((item) => item.id === button.dataset.example);
         app.rawInstructions = example.instructions.map((instruction, index) => ({
-          ...createDefaultInstruction(instruction.opcode, { x: 36, y: 96 + index * 154 }),
+          ...createDefaultInstruction(instruction.opcode, { x: defaultInstructionX(), y: 96 + index * 154 }),
           ...instruction
         }));
         app.looseOperands = [];

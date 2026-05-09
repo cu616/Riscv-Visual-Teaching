@@ -23,9 +23,11 @@ try {
   assertIncludes(indexHtml, 'id="zoomOutBtn"', "zoom out button is missing");
   assertIncludes(indexHtml, 'id="zoomResetBtn"', "zoom reset button is missing");
   assertIncludes(indexHtml, 'id="zoomInBtn"', "zoom in button is missing");
-  assertIncludes(indexHtml, 'id="statePanelBtn"', "state panel toggle is missing");
-  assertIncludes(indexHtml, 'id="previewPanelBtn"', "preview panel toggle is missing");
-  assertIncludes(indexHtml, 'id="notesPanelBtn"', "notes panel toggle is missing");
+  assertIncludes(indexHtml, 'id="assistPanelBtn"', "assist panel toggle is missing");
+  assertIncludes(indexHtml, 'id="assistPanel"', "assist panel is missing");
+  assertIncludes(indexHtml, 'data-side-tab="machine"', "machine assist tab is missing");
+  assertIncludes(indexHtml, 'data-side-tab="code"', "code assist tab is missing");
+  assertIncludes(indexHtml, 'data-side-tab="notes"', "notes assist tab is missing");
   assertIncludes(indexHtml, 'id="saveProgramBtn"', "save case button is missing");
   assertIncludes(indexHtml, 'id="importProgramInput"', "import case input is missing");
   assertIncludes(indexHtml, 'id="stateTargetType"', "state target type selector is missing");

@@ -4,11 +4,13 @@
 
 ## 当前技术路线
 
-截至 2026-05-03，项目路线已经明确调整为：
+截至 2026-05-09，项目路线已经明确调整为：
 
 - 主线：`app/` 非 Blockly 自研积木界面，后续优先改造成桌面版。
 - 保留：`desktop/` Blockly 迁移版作为技术验证，用来参考成熟拖拽、连接约束、序列化和 Electron 打包经验。
 - 远期：OpenHarmony 先采用 ArkWeb/WebView 承载自研 Web UI，再根据比赛展示和性能需要逐步原生化到 ArkUI。
+
+仓库中存在一些早期路线文档，里面可能仍写着“第一版使用 Blockly”“右侧固定显示数据流动画”等旧方案。遇到冲突时，以 [文档状态与路线索引](docs/文档状态与路线索引.md) 和本 README 为准。
 
 Blockly 不需要账号、注册或 API。此前桌面白屏主要来自 Electron 打包后的模块路径、构建产物和二进制依赖问题，不是 Blockly 授权问题。
 
@@ -16,16 +18,17 @@ Blockly 不需要账号、注册或 API。此前桌面白屏主要来自 Electro
 
 团队成员第一次接手时，建议先阅读：
 
-1. [技术路线决策与阶段复盘](docs/技术路线决策与阶段复盘.md)
-2. [工程目录与代码分区说明](docs/工程目录与代码分区说明.md)
-3. [项目进度与结构总结](docs/项目进度与结构总结.md)
-4. [产品说明：当前阶段版](docs/产品说明_当前阶段版.md)
-5. [明早验收与问题定位清单](docs/明早验收与问题定位清单.md)
-6. [长期自动化开发任务：非 Blockly 主线工程化](docs/长期自动化开发任务_非Blockly主线工程化.md)
-7. [自动化开发执行记录](docs/自动化开发执行记录.md)
-8. [长期任务 v0.4：案例工程化与初始状态闭环](docs/长期任务_v0.4_案例工程化与初始状态闭环.md)
-9. [OpenHarmony ArkWeb 移植版说明](openharmony-port/README.md)
-10. [Blockly 迁移阶段方案](docs/Blockly迁移阶段方案.md)
+1. [文档状态与路线索引](docs/文档状态与路线索引.md)
+2. [技术路线决策与阶段复盘](docs/技术路线决策与阶段复盘.md)
+3. [工程目录与代码分区说明](docs/工程目录与代码分区说明.md)
+4. [项目进度与结构总结](docs/项目进度与结构总结.md)
+5. [产品说明：当前阶段版](docs/产品说明_当前阶段版.md)
+6. [机器状态格动画重构方案](docs/机器状态格动画重构方案.md)
+7. [明早验收与问题定位清单](docs/明早验收与问题定位清单.md)
+8. [长期自动化开发任务：非 Blockly 主线工程化](docs/长期自动化开发任务_非Blockly主线工程化.md)
+9. [自动化开发执行记录](docs/自动化开发执行记录.md)
+10. [OpenHarmony ArkWeb 移植版说明](openharmony-port/README.md)
+11. [Blockly 迁移阶段方案](docs/Blockly迁移阶段方案.md)
 
 ## 运行非 Blockly 主线原型
 
@@ -143,6 +146,7 @@ npm.cmd --prefix .\desktop run package:win
 ## 协作原则
 
 - 需求、取舍和阶段进度必须同步写入 `docs/`，方便后续 AI 和团队成员接力。
+- Git/GitHub 协作统一参考 `docs/Git协作流程与分支规则.md`：从最新 `main` 新建功能分支，通过 PR 合入，提交前先检查 `git status --short`。
 - 主线新功能优先回到 `app/` 的自研积木逻辑，并规划桌面封装。
 - `desktop/` 的 Blockly 代码保留为验证资产，不再强行作为最终外观方案。
 - `desktop/dist/`、`desktop/release/`、`desktop/node_modules/`、`desktop/.cache/` 等生成物不要提交。

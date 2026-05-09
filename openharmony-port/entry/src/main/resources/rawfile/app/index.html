@@ -31,6 +31,14 @@
               <button id="resetBtn" title="重置">↻ 重置</button>
             </div>
             <button id="autoBtn" title="自动执行">▶ 自动执行</button>
+            <label class="speed-control" title="自动执行与状态动画速度">
+              Speed
+              <select id="animationSpeedSelect">
+                <option value="0.5">0.5x</option>
+                <option value="1" selected>1x</option>
+                <option value="1.5">1.5x</option>
+              </select>
+            </label>
             <button id="clearProgramBtn">清空程序</button>
             <button id="saveProgramBtn">保存案例</button>
             <label class="file-button">
@@ -46,6 +54,7 @@
             <button id="demoModeBtn">演示模式</button>
             <div class="execution-progress" aria-label="执行进度">
               <span id="executionProgressText">0 / 0</span>
+              <span class="pc-inline">PC <strong id="pcValue">0</strong></span>
               <progress id="executionProgressBar" value="0" max="1"></progress>
             </div>
             <span id="debugHint" class="debug-hint">上一步只回退执行状态</span>
@@ -141,44 +150,51 @@
             <section class="panel editor-panel pane">
               <div class="panel-heading">
                 <h2>指令编辑区</h2>
-                <span>专注拼接，右上角打开辅助视图</span>
-              </div>
-              <div id="programCanvas" class="program-canvas">
                 <div class="canvas-corner-tools" aria-label="编辑区视图工具">
                   <button id="zoomOutBtn" class="tool-btn" title="缩小视图">-</button>
                   <button id="zoomResetBtn" class="tool-btn scale-readout" title="视图比例">100%</button>
                   <button id="zoomInBtn" class="tool-btn" title="放大视图">+</button>
-                  <button id="statePanelBtn" class="tool-btn" title="打开机器状态">机器</button>
-                  <button id="previewPanelBtn" class="tool-btn" title="打开汇编预览">代码</button>
-                  <button id="notesPanelBtn" class="tool-btn" title="打开教学说明">说明</button>
+                  <button id="assistPanelBtn" class="tool-btn" title="展开右侧辅助栏">辅助栏</button>
                 </div>
-                <div id="programDropZone" class="program-drop-zone">
-                  把左侧指令大积木拖到这里，可上下拖动排序
+              </div>
+              <div id="programCanvas" class="program-canvas">
+                <div id="programDropZone" class="program-drop-zone" hidden>
+                  释放以添加指令积木
                 </div>
                 <div id="instructionList" class="instruction-list"></div>
               </div>
             </section>
 
-            <div class="resize-handle" data-resize="editor" title="拖动调整编辑区宽度"></div>
+            <div class="resize-handle right-resize-handle" data-resize="assistant" title="拖动调整右侧辅助栏宽度"></div>
 
-            <aside class="right-stack pane">
-              <section id="workspaceHarmonyPanel" class="panel visual-panel workspace-harmony-panel" hidden>
-                <div class="panel-heading">
-                  <h2>OpenHarmony 展示</h2>
-                  <span>硬件积木通信视角</span>
-                </div>
-                <div id="workspaceHarmonySummary" class="workspace-harmony-summary"></div>
-                <div id="workspaceHarmonyCanvas" class="workspace-harmony-canvas" aria-live="polite"></div>
-              </section>
+            <aside id="assistPanel" class="panel assist-panel pane" aria-label="右侧辅助栏">
+              <div class="panel-heading assist-heading">
+                <h2>辅助栏</h2>
+                <button id="assistCloseBtn" class="tool-btn" title="收起右侧辅助栏">收起</button>
+              </div>
+              <div class="assist-tabs" role="tablist" aria-label="辅助栏内容">
+                <button class="assist-tab active" data-side-tab="machine" role="tab">机器</button>
+                <button class="assist-tab" data-side-tab="code" role="tab">代码</button>
+                <button class="assist-tab" data-side-tab="notes" role="tab">说明</button>
+              </div>
+
+              <div class="assist-scroll">
+                <section class="assist-section active" data-side-section="machine">
+                  <div id="stateAnimationDock" class="state-animation-dock" hidden></div>
+                  <section id="workspaceHarmonyPanel" class="panel visual-panel workspace-harmony-panel" hidden>
+                    <div class="panel-heading">
+                      <h2>OpenHarmony 展示</h2>
+                      <button id="harmonyWorkspaceCollapseBtn" class="tool-btn" title="收起 OpenHarmony 展示栏">收起</button>
+                    </div>
+                    <div id="workspaceHarmonyBody" class="workspace-harmony-body">
+                      <div id="workspaceHarmonySummary" class="workspace-harmony-summary"></div>
+                      <div id="workspaceHarmonyCanvas" class="workspace-harmony-canvas" aria-live="polite"></div>
+                    </div>
+                  </section>
 
               <aside class="panel state-panel">
                 <div class="panel-heading">
                   <h2>机器状态</h2>
-                  <button id="stateCloseBtn" class="tool-btn" title="收起">收起</button>
-                </div>
-                <div class="pc-box">
-                  <span>PC</span>
-                  <strong id="pcValue">0</strong>
                 </div>
                 <div class="base-control" aria-label="机器状态进制显示">
                   <button class="base-btn active" data-base="dec">十进制</button>
@@ -204,61 +220,22 @@
                 <div id="memoryGrid" class="memory-grid"></div>
               </aside>
 
-              <section class="panel visual-panel">
-                <div class="panel-heading">
-                  <h2>数据流可视化</h2>
-                  <span id="currentInstructionLabel">等待执行</span>
-                </div>
-                <div class="datapath-stage">
-                  <svg class="stage-lines" viewBox="0 0 980 430" preserveAspectRatio="none" aria-hidden="true">
-                    <path id="busFetch" d="M95 72 C220 72 250 72 350 72" />
-                    <path id="busRs1" d="M210 188 C300 188 345 208 422 222" />
-                    <path id="busRs2" d="M210 272 C300 272 345 246 422 238" />
-                    <path id="busAluMem" d="M548 230 C620 230 655 180 724 176" />
-                    <path id="busAluWb" d="M548 244 C620 278 690 318 790 326" />
-                    <path id="busMemWb" d="M808 188 C850 220 850 278 806 314" />
-                    <path id="busPc" d="M520 84 C650 78 730 98 850 118" />
-                  </svg>
-                  <div id="pcNode" class="stage-node pc-node">
-                    <span>PC</span>
-                    <strong>0</strong>
-                  </div>
-                  <div id="instructionNode" class="stage-node instruction-node">
-                    <span>Instruction</span>
-                    <strong>等待执行</strong>
-                  </div>
-                  <div id="registerFileNode" class="stage-node register-file-node">
-                    <span>Register File</span>
-                    <strong>rs1 / rs2</strong>
-                  </div>
-                  <div id="rs1Node" class="stage-chip rs1-chip">rs1</div>
-                  <div id="rs2Node" class="stage-chip rs2-chip">rs2 / imm</div>
-                  <div id="aluNode" class="stage-node alu-stage-node">
-                    <span>ALU</span>
-                    <strong>运算</strong>
-                  </div>
-                  <div id="memoryNode" class="stage-node memory-stage-node">
-                    <span>Memory</span>
-                    <strong>load / store</strong>
-                  </div>
-                  <div id="writebackNode" class="stage-node writeback-node">
-                    <span>Write Back</span>
-                    <strong>rd</strong>
-                  </div>
-                  <div id="branchNode" class="stage-node branch-node">
-                    <span>Branch</span>
-                    <strong>PC 更新</strong>
-                  </div>
-                </div>
-                <p id="stepExplanation" class="explanation">
-                  点击“单步执行”，观察寄存器、ALU、内存和 PC 的变化。
-                </p>
-              </section>
+                </section>
 
+                <section class="assist-section" data-side-section="code">
+                  <section class="panel preview-panel">
+                    <div class="panel-heading">
+                      <h2>汇编预览</h2>
+                      <span>当前程序</span>
+                    </div>
+                    <pre id="assemblyPreview" class="code-preview"></pre>
+                  </section>
+                </section>
+
+                <section class="assist-section" data-side-section="notes">
               <section class="panel notes-panel">
                 <div class="panel-heading">
                   <h2>教学备注</h2>
-                  <button id="notesToggleBtn" class="tool-btn" title="展开/收起">展开</button>
                 </div>
                 <div class="notes-body">
                   <label class="notes-editor notes-title">
@@ -275,19 +252,13 @@
                   </label>
                 </div>
               </section>
+                </section>
+              </div>
 
             </aside>
 
-            <section class="panel preview-panel">
-              <div class="panel-heading">
-                <h2>汇编预览</h2>
-                <button id="previewCloseBtn" class="tool-btn" title="收起">收起</button>
-              </div>
-              <pre id="assemblyPreview" class="code-preview"></pre>
-              <pre id="jsonPreview" class="json-preview"></pre>
-            </section>
-
             <section class="panel log-panel">
+              <div class="resize-handle bottom-resize-handle" data-resize="log" title="拖动调整日志区高度"></div>
               <div class="panel-heading">
                 <h2>执行日志与教学反馈</h2>
                 <span>为什么结果会变</span>
@@ -374,6 +345,7 @@
     <script src="./src/instructions.js"></script>
     <script src="./src/simulator.js"></script>
     <script src="./src/datapath.js"></script>
+    <script src="./src/state-animation.js"></script>
     <script src="./src/ui-utils.js"></script>
     <script src="./src/case-format.js"></script>
     <script src="./src/operand-model.js"></script>
