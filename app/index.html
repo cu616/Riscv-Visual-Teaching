@@ -24,33 +24,27 @@
         <section id="workspace" class="view active">
           <section class="toolbar" aria-label="执行控制">
             <div class="debug-controls" aria-label="分步调试">
-              <button id="prevBtn" title="上一步">◀ 上一步</button>
-              <button id="stepBtn" class="primary" title="下一步">▶ 下一步</button>
-              <button id="pauseBtn" title="暂停">Ⅱ 暂停</button>
-              <button id="resetBtn" title="重置">↻ 重置</button>
+              <button id="prevBtn" class="line-icon-btn" title="上一步" aria-label="上一步"><span class="line-icon icon-prev" aria-hidden="true"></span></button>
+              <button id="stepBtn" class="primary line-icon-btn" title="下一步" aria-label="下一步"><span class="line-icon icon-next" aria-hidden="true"></span></button>
+              <button id="pauseBtn" class="line-icon-btn" title="暂停" aria-label="暂停"><span class="line-icon icon-pause" aria-hidden="true"></span></button>
+              <button id="resetBtn" class="line-icon-btn" title="重置"><span class="line-icon icon-reset" aria-hidden="true"></span></button>
             </div>
-            <button id="autoBtn" title="自动执行">▶ 自动执行</button>
+            <button id="autoBtn" class="line-icon-btn" title="自动执行" aria-label="自动执行"><span class="line-icon icon-run" aria-hidden="true"></span></button>
             <label class="speed-control" title="自动执行与状态动画速度">
-              Speed
+              速度
               <select id="animationSpeedSelect">
                 <option value="0.5">0.5x</option>
                 <option value="1" selected>1x</option>
                 <option value="1.5">1.5x</option>
               </select>
             </label>
-            <button id="clearProgramBtn">清空程序</button>
-            <button id="saveProgramBtn">保存案例</button>
-            <label class="file-button">
-              导入案例
+            <button id="clearProgramBtn" class="compact-command" title="清空程序">清空</button>
+            <button id="saveProgramBtn" class="compact-command" title="保存案例">保存</button>
+            <label class="file-button compact-command" title="导入案例" aria-label="导入案例">
+              导入
               <input id="importProgramInput" type="file" accept=".json,.riscvteach.json,application/json" />
             </label>
-            <button id="harmonyWorkspaceToggleBtn" title="在工作台中显示 OpenHarmony 硬件通信视角">OpenHarmony 展示</button>
-            <div id="harmonyWorkspaceControls" class="harmony-workspace-controls" hidden aria-label="OpenHarmony 展示控制">
-              <button id="harmonyWorkspaceResetBtn" title="重置 OpenHarmony 展示步骤" aria-label="重置 OpenHarmony 展示步骤">↻</button>
-              <button id="harmonyWorkspacePrevBtn" title="OpenHarmony 上一步" aria-label="OpenHarmony 上一步">◀</button>
-              <button id="harmonyWorkspaceNextBtn" class="primary" title="OpenHarmony 下一步" aria-label="OpenHarmony 下一步">▶</button>
-            </div>
-            <button id="demoModeBtn">演示模式</button>
+            <button id="harmonyWorkspaceToggleBtn" class="compact-command" title="在工作台中显示 OpenHarmony 硬件通信视角">展示</button>
             <div class="execution-progress" aria-label="执行进度">
               <span id="executionProgressText">0 / 0</span>
               <span class="pc-inline">PC <strong id="pcValue">0</strong></span>
@@ -58,6 +52,7 @@
             </div>
             <span id="debugHint" class="debug-hint">上一步只回退执行状态</span>
             <span id="runState" class="status-pill">就绪</span>
+            <span id="runtimeState" class="status-pill runtime-pill">Web</span>
           </section>
 
           <section class="workspace-grid">
@@ -153,14 +148,19 @@
                   <button id="zoomOutBtn" class="tool-btn" title="缩小视图">-</button>
                   <button id="zoomResetBtn" class="tool-btn scale-readout" title="视图比例">100%</button>
                   <button id="zoomInBtn" class="tool-btn" title="放大视图">+</button>
-                  <button id="assistPanelBtn" class="tool-btn" title="展开右侧辅助栏">辅助栏</button>
+                  <button id="assistPanelBtn" class="tool-btn" title="展开右侧辅助栏" aria-label="展开右侧辅助栏">☰</button>
                 </div>
               </div>
               <div id="programCanvas" class="program-canvas">
                 <div id="programDropZone" class="program-drop-zone" hidden>
                   释放以添加指令积木
                 </div>
-                <div id="instructionList" class="instruction-list"></div>
+                <div id="instructionList" class="instruction-list">
+                  <div class="softbus-canvas-anchor" aria-hidden="true">
+                    <span>香橙派 / 软总线</span>
+                    <i></i>
+                  </div>
+                </div>
               </div>
             </section>
 
@@ -169,7 +169,7 @@
             <aside id="assistPanel" class="panel assist-panel pane" aria-label="右侧辅助栏">
               <div class="panel-heading assist-heading">
                 <h2>辅助栏</h2>
-                <button id="assistCloseBtn" class="tool-btn" title="收起右侧辅助栏">收起</button>
+                <button id="assistCloseBtn" class="tool-btn" title="收起右侧辅助栏" aria-label="收起右侧辅助栏">×</button>
               </div>
               <div class="assist-tabs" role="tablist" aria-label="辅助栏内容">
                 <button class="assist-tab active" data-side-tab="machine" role="tab">机器</button>
@@ -183,7 +183,7 @@
                   <section id="workspaceHarmonyPanel" class="panel visual-panel workspace-harmony-panel" hidden>
                     <div class="panel-heading">
                       <h2>OpenHarmony 展示</h2>
-                      <button id="harmonyWorkspaceCollapseBtn" class="tool-btn" title="收起 OpenHarmony 展示栏">收起</button>
+                      <button id="harmonyWorkspaceCollapseBtn" class="tool-btn" title="收起 OpenHarmony 展示栏" aria-label="收起 OpenHarmony 展示栏">×</button>
                     </div>
                     <div id="workspaceHarmonyBody" class="workspace-harmony-body">
                       <div id="workspaceHarmonySummary" class="workspace-harmony-summary"></div>
@@ -256,11 +256,12 @@
 
             </aside>
 
+            <button id="logPanelBtn" class="log-drawer-toggle" title="展开执行日志与教学反馈" aria-label="展开执行日志与教学反馈">▲</button>
             <section class="panel log-panel">
               <div class="resize-handle bottom-resize-handle" data-resize="log" title="拖动调整日志区高度"></div>
               <div class="panel-heading">
                 <h2>执行日志与教学反馈</h2>
-                <span>为什么结果会变</span>
+                <button id="logCloseBtn" class="tool-btn" title="收起执行日志与教学反馈" aria-label="收起执行日志与教学反馈">×</button>
               </div>
               <div id="errorBox" class="error-box" hidden></div>
               <ol id="executionLog" class="execution-log"></ol>

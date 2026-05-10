@@ -156,6 +156,113 @@ h3 {
   padding: 0 10px;
 }
 
+.line-icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  min-width: 36px;
+  min-height: 34px;
+  padding: 0;
+}
+
+.line-icon {
+  position: relative;
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+}
+
+.line-icon::before,
+.line-icon::after {
+  content: "";
+  position: absolute;
+  box-sizing: border-box;
+}
+
+.icon-prev::before,
+.icon-next::before {
+  top: 4px;
+  width: 9px;
+  height: 9px;
+  border-top: 2px solid currentColor;
+  border-left: 2px solid currentColor;
+}
+
+.icon-prev::before {
+  left: 4px;
+  transform: rotate(-45deg);
+}
+
+.icon-next::before {
+  right: 4px;
+  transform: rotate(135deg);
+}
+
+.icon-run::before {
+  left: 5px;
+  top: 3px;
+  width: 0;
+  height: 0;
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
+  border-left: 10px solid currentColor;
+}
+
+.icon-pause::before,
+.icon-pause::after {
+  top: 3px;
+  width: 3px;
+  height: 12px;
+  border-radius: 2px;
+  background: currentColor;
+}
+
+.icon-pause::before {
+  left: 4px;
+  box-shadow: 7px 0 0 currentColor;
+}
+
+.icon-pause::after {
+  display: none;
+}
+
+.icon-reset::before {
+  left: 3px;
+  top: 3px;
+  width: 12px;
+  height: 12px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  transform: rotate(28deg);
+}
+
+.icon-reset::after {
+  right: 0;
+  top: 2px;
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 6px solid currentColor;
+}
+
+.compact-command {
+  display: inline-grid;
+  place-items: center;
+  min-width: 46px;
+  min-height: 34px;
+  padding: 0 10px;
+  line-height: 1;
+  font-weight: 900;
+}
+
+.file-button.compact-command {
+  min-width: 46px;
+  padding: 0 10px;
+  justify-content: center;
+}
+
 .speed-control {
   display: inline-flex;
   align-items: center;
@@ -222,6 +329,23 @@ body.is-running .state-editor {
   font-weight: 700;
 }
 
+.runtime-pill {
+  margin-left: 0;
+  border: 1px solid var(--line);
+  background: #f8fafc;
+  color: var(--muted);
+  white-space: nowrap;
+  max-width: 88px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+body.oh-runtime .runtime-pill {
+  border-color: #bdd7ff;
+  background: var(--blue-soft);
+  color: var(--primary-dark);
+}
+
 .workspace-grid {
   position: relative;
   min-height: calc(100vh - 154px);
@@ -253,6 +377,23 @@ body.is-running .state-editor {
   left: calc(16px + var(--toolbox-width));
   top: 18px;
   bottom: 18px;
+}
+
+body.oh-runtime .resize-handle[data-resize="toolbox"] {
+  width: 12px;
+  background: rgba(13, 110, 253, 0.18);
+}
+
+body.oh-runtime .resize-handle[data-resize="toolbox"]::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 3px;
+  height: 46px;
+  border-radius: 999px;
+  background: rgba(13, 110, 253, 0.68);
+  transform: translate(-50%, -50%);
 }
 
 .right-resize-handle {
@@ -636,18 +777,22 @@ body.assist-panel-open .right-resize-handle::after {
 
 .editor-panel {
   position: absolute;
-  inset: 0;
+  left: calc(16px + var(--toolbox-width));
+  right: 0;
+  top: 0;
+  bottom: 0;
   z-index: 1;
-  padding: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0;
+  padding: 18px 24px 18px 0;
   border: 0;
   border-radius: 0;
   background: transparent;
 }
 
 .editor-panel > .panel-heading {
-  position: absolute;
-  left: calc(32px + var(--toolbox-width));
-  top: 18px;
+  position: relative;
   z-index: 12;
   align-items: center;
   margin: 0;
@@ -657,7 +802,8 @@ body.assist-panel-open .right-resize-handle::after {
   background: rgba(255, 255, 255, 0.86);
   box-shadow: 0 10px 24px rgba(17, 24, 39, 0.08);
   backdrop-filter: blur(8px);
-  min-width: min(620px, calc(100vw - var(--toolbox-width) - 92px));
+  width: min(760px, 100%);
+  min-width: 0;
   justify-content: space-between;
 }
 
@@ -678,7 +824,7 @@ body.assist-panel-open .right-resize-handle::after {
   position: relative;
   width: 100%;
   height: 100%;
-  min-height: calc(100vh - 154px);
+  min-height: 0;
   border: 0;
   border-radius: 0;
   background:
@@ -698,13 +844,13 @@ body.assist-panel-open .right-resize-handle::after {
 
 .program-drop-zone {
   position: absolute;
-  top: 66px;
-  left: calc(32px + var(--toolbox-width));
+  top: 16px;
+  left: 0;
   z-index: 4;
   display: grid;
   place-items: center;
   min-height: 62px;
-  width: min(620px, calc(100% - var(--toolbox-width) - 80px));
+  width: min(620px, calc(100% - 48px));
   margin: 0;
   border: 2px dashed #aeb8c5;
   border-radius: 10px;
@@ -1046,23 +1192,6 @@ body.dragging-operand .empty-slot,
   min-height: 260px;
 }
 
-body.demo-mode .preview-panel .json-preview {
-  display: none;
-}
-
-body.demo-mode .workspace-grid {
-  --editor-width: minmax(620px, 1fr);
-}
-
-body.demo-mode .instruction-card {
-  transform: scale(1.08);
-  transform-origin: left top;
-}
-
-body.demo-mode .datapath-stage {
-  height: 500px;
-}
-
 .harmony-workspace-controls {
   display: inline-flex;
   gap: 6px;
@@ -1085,17 +1214,12 @@ body.demo-mode .datapath-stage {
   font-weight: 900;
 }
 
-body.demo-mode .execution-log {
-  max-height: 300px;
-}
-
 body.harmony-workspace-mode {
   --editor-width: minmax(500px, 1.2fr);
   --right-width: minmax(460px, 0.9fr);
 }
 
 body.harmony-workspace-mode .program-canvas {
-  padding-left: 176px;
   background:
     linear-gradient(90deg, rgba(49, 104, 200, 0.08) 1px, transparent 1px),
     linear-gradient(180deg, rgba(15, 143, 111, 0.06) 1px, transparent 1px),
@@ -1103,17 +1227,20 @@ body.harmony-workspace-mode .program-canvas {
   background-size: 28px 28px;
 }
 
-body.harmony-workspace-mode .program-canvas::before {
-  content: "香橙派 / 软总线";
+.softbus-canvas-anchor {
+  display: none;
+}
+
+body.harmony-workspace-mode .softbus-canvas-anchor {
   position: absolute;
   left: 12px;
   top: 16px;
-  bottom: 16px;
   z-index: 6;
   display: grid;
   align-content: start;
   justify-items: center;
   width: 98px;
+  height: var(--softbus-height, 360px);
   min-height: 360px;
   border: 2px solid #0f8f6f;
   border-radius: 8px;
@@ -1128,11 +1255,10 @@ body.harmony-workspace-mode .program-canvas::before {
   letter-spacing: 0;
 }
 
-body.harmony-workspace-mode .program-canvas::after {
-  content: "";
+body.harmony-workspace-mode .softbus-canvas-anchor i {
   position: absolute;
-  left: 38px;
-  top: 28px;
+  left: 24px;
+  top: 12px;
   z-index: 7;
   width: 48px;
   height: 58px;
@@ -2095,13 +2221,49 @@ body.state-animation-active .workspace-harmony-panel:not([hidden]) {
 
 .log-panel {
   position: absolute;
-  left: calc(32px + var(--toolbox-width));
+  left: calc(16px + var(--toolbox-width));
   right: 24px;
-  bottom: 18px;
+  bottom: 0;
   z-index: 45;
   height: var(--log-height);
   overflow: auto;
   box-shadow: 0 16px 34px rgba(17, 24, 39, 0.15);
+  transform: translateY(calc(100% + 28px));
+  transition: transform 0.18s ease;
+}
+
+body.log-panel-open .log-panel {
+  transform: translateY(0);
+}
+
+body.log-panel-open .bottom-resize-handle {
+  display: block;
+}
+
+.log-drawer-toggle {
+  position: absolute;
+  left: calc(16px + var(--toolbox-width));
+  right: 24px;
+  bottom: 0;
+  z-index: 52;
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 22px;
+  padding: 0;
+  border-radius: 8px 8px 0 0;
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--primary-dark);
+  font-size: 13px;
+  font-weight: 900;
+  box-shadow: 0 -6px 16px rgba(17, 24, 39, 0.1);
+  margin: 0 auto;
+}
+
+body.log-panel-open .log-drawer-toggle {
+  bottom: var(--log-height);
 }
 
 .error-box {

@@ -13,9 +13,23 @@ const requiredMarkers = [
   "./src/datapath.js",
   'id="programCanvas"',
   'id="instructionList"',
+  'class="softbus-canvas-anchor"',
   'id="registerGrid"',
   'id="memoryGrid"',
-  'id="teachingNotesInput"'
+  'id="teachingNotesInput"',
+  'id="zoomOutBtn"',
+  'id="zoomResetBtn"',
+  'id="zoomInBtn"',
+  'id="pcValue"',
+  'id="runtimeState"',
+  'id="logPanelBtn"',
+  'id="logCloseBtn"',
+  'id="stateAnimationDock"',
+  'id="harmonyWorkspaceToggleBtn"',
+  'id="workspaceHarmonyPanel"',
+  'data-side-tab="machine"',
+  'data-side-tab="code"',
+  'data-side-tab="notes"'
 ];
 
 for (const marker of requiredMarkers) {
@@ -35,6 +49,7 @@ const requiredFiles = [
   "src/case-format.js",
   "src/operand-model.js",
   "src/machine-state.js",
+  "src/state-animation.js",
   "src/app.js"
 ];
 
@@ -68,6 +83,9 @@ for (const file of projectFiles) {
 const moduleConfig = await readFile(join(portRoot, "entry", "src", "main", "module.json5"), "utf8");
 const appConfig = await readFile(join(portRoot, "AppScope", "app.json5"), "utf8");
 const buildProfile = await readFile(join(portRoot, "build-profile.json5"), "utf8");
+const openHarmonyCss = await readFile(join(appRoot, "openharmony-port.css"), "utf8");
+const openHarmonyBridge = await readFile(join(appRoot, "openharmony-bridge.js"), "utf8");
+const indexPage = await readFile(join(portRoot, "entry", "src", "main", "ets", "pages", "Index.ets"), "utf8");
 if (!appConfig.includes("$media:app_icon")) {
   throw new Error("OpenHarmony AppScope app.json5 should reference AppScope $media:app_icon.");
 }
@@ -91,6 +109,18 @@ if (!buildProfile.includes('"targetSdkVersion": 12')) {
 }
 if (buildProfile.includes('"compatibleSdkVersion": "')) {
   throw new Error("OpenHarmony compatibleSdkVersion must be numeric, not a HarmonyOS version string.");
+}
+if (!openHarmonyCss.includes(".visual-panel:not(.workspace-harmony-panel)")) {
+  throw new Error("OpenHarmony CSS must hide only the legacy visual panel and keep workspaceHarmonyPanel available.");
+}
+if (!openHarmonyCss.includes("--assistant-width")) {
+  throw new Error("OpenHarmony CSS must adapt the current assistant-panel layout, not the old right-stack layout.");
+}
+if (!openHarmonyBridge.includes("targetDisplay")) {
+  throw new Error("OpenHarmony JS bridge should expose targetDisplay for runtime diagnostics.");
+}
+if (!indexPage.includes("targetDisplay: '1920x1080'")) {
+  throw new Error("OpenHarmony ArkTS bridge should identify the current 1920x1080 target display.");
 }
 
 console.log(`OpenHarmony rawfile smoke test passed. Checked ${requiredFiles.length + projectFiles.length} files.`);

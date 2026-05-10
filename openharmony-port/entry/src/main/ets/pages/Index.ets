@@ -9,8 +9,9 @@ class RiscVTeachingBridge {
     return JSON.stringify({
       platform: 'OpenHarmony',
       shell: 'ArkWeb',
+      targetDisplay: '1920x1080',
       storage: 'web-local',
-      note: 'The first port keeps save/import in the Web layer and reserves this bridge for native file APIs.'
+      note: 'ArkWeb rawfile port for the 1920x1080 teaching screen. Native file APIs are reserved for later.'
     });
   }
 

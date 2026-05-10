@@ -3,11 +3,11 @@
   window.RiscVOpenHarmony = {
     available: Boolean(bridge),
     getRuntimeInfo() {
-      if (!bridge?.getRuntimeInfo) return { platform: "web", shell: "browser" };
+      if (!bridge?.getRuntimeInfo) return { platform: "web", shell: "browser", targetDisplay: "responsive" };
       try {
         return JSON.parse(bridge.getRuntimeInfo());
       } catch {
-        return { platform: "OpenHarmony", shell: "ArkWeb" };
+        return { platform: "OpenHarmony", shell: "ArkWeb", targetDisplay: "1920x1080" };
       }
     },
     saveCase(payload) {

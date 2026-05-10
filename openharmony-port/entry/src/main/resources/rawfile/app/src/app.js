@@ -22,7 +22,6 @@
     instructionList: document.getElementById("instructionList"),
     assemblyPreview: document.getElementById("assemblyPreview"),
     clearProgramBtn: document.getElementById("clearProgramBtn"),
-    demoModeBtn: document.getElementById("demoModeBtn"),
     programCanvas: document.getElementById("programCanvas"),
     programDropZone: document.getElementById("programDropZone"),
     zoomOutBtn: document.getElementById("zoomOutBtn"),
@@ -31,6 +30,9 @@
     assistPanelBtn: document.getElementById("assistPanelBtn"),
     assistCloseBtn: document.getElementById("assistCloseBtn"),
     assistPanel: document.getElementById("assistPanel"),
+    logPanelBtn: document.getElementById("logPanelBtn"),
+    logCloseBtn: document.getElementById("logCloseBtn"),
+    logPanel: document.querySelector(".log-panel"),
     assistTabs: document.querySelectorAll(".assist-tab"),
     assistSections: document.querySelectorAll(".assist-section"),
     statePanel: document.querySelector(".state-panel"),
@@ -48,10 +50,6 @@
     saveProgramBtn: document.getElementById("saveProgramBtn"),
     importProgramInput: document.getElementById("importProgramInput"),
     harmonyWorkspaceToggleBtn: document.getElementById("harmonyWorkspaceToggleBtn"),
-    harmonyWorkspaceControls: document.getElementById("harmonyWorkspaceControls"),
-    harmonyWorkspaceResetBtn: document.getElementById("harmonyWorkspaceResetBtn"),
-    harmonyWorkspacePrevBtn: document.getElementById("harmonyWorkspacePrevBtn"),
-    harmonyWorkspaceNextBtn: document.getElementById("harmonyWorkspaceNextBtn"),
     harmonyWorkspaceCollapseBtn: document.getElementById("harmonyWorkspaceCollapseBtn"),
     workspaceHarmonyPanel: document.getElementById("workspaceHarmonyPanel"),
     workspaceHarmonyBody: document.getElementById("workspaceHarmonyBody"),
@@ -86,6 +84,7 @@
     harmonyNextStepBtn: document.getElementById("harmonyNextStepBtn"),
     harmonyResetStepBtn: document.getElementById("harmonyResetStepBtn"),
     harmonyPipelineSteps: document.querySelectorAll(".pipeline-step"),
+    runtimeState: document.getElementById("runtimeState"),
     visualNodes: [
       "pcNode",
       "instructionNode",
@@ -132,6 +131,7 @@
     displayBase: "dec",
     canvasScale: 1,
     assistOpen: false,
+    logOpen: false,
     activeAssistTab: "machine",
     pendingOperand: null,
     initialState: { registers: {}, memory: {} },
@@ -140,15 +140,15 @@
     harmonyWorkspaceCollapsed: false,
     harmonyStep: 0
   };
-  const runtime = {
-    isOpenHarmony: Boolean(window.OpenHarmonyBridge)
-  };
+  const runtime = createRuntimeInfo();
   let activeImmediateEditor = null;
   let ohTouchDrag = null;
   let suppressClickUntil = 0;
 
   function init() {
     document.body.classList.toggle("oh-runtime", runtime.isOpenHarmony);
+    document.body.dataset.runtimeShell = runtime.shell;
+    updateRuntimeState();
     if (runtime.isOpenHarmony) {
       document.addEventListener("dragstart", (event) => event.preventDefault(), true);
       document.addEventListener("drop", (event) => event.preventDefault(), true);
@@ -165,7 +165,41 @@
     renderHarmony();
     renderAll();
     setCanvasScale(app.canvasScale);
-    toggleAssistPanel(false);
+    setAssistTab("machine");
+    toggleAssistPanel(runtime.isOpenHarmony);
+    toggleLogPanel(false);
+  }
+
+  function createRuntimeInfo() {
+    const fallback = {
+      isOpenHarmony: Boolean(window.OpenHarmonyBridge),
+      platform: window.OpenHarmonyBridge ? "OpenHarmony" : "Web",
+      shell: window.OpenHarmonyBridge ? "ArkWeb" : "Browser",
+      targetDisplay: window.OpenHarmonyBridge ? "1920x1080" : "responsive"
+    };
+    if (!window.RiscVOpenHarmony?.getRuntimeInfo) return fallback;
+    try {
+      const info = window.RiscVOpenHarmony.getRuntimeInfo();
+      return {
+        ...fallback,
+        ...info,
+        isOpenHarmony: info.platform === "OpenHarmony" || fallback.isOpenHarmony
+      };
+    } catch {
+      return fallback;
+    }
+  }
+
+  function updateRuntimeState() {
+    if (!dom.runtimeState) return;
+    const viewport = `${window.innerWidth}x${window.innerHeight}`;
+    const label = runtime.isOpenHarmony
+      ? "OH 1080p"
+      : "Web";
+    dom.runtimeState.textContent = label;
+    dom.runtimeState.title = runtime.note
+      ? `${runtime.platform} ${runtime.shell}；目标：${runtime.targetDisplay || "1080p"}；当前视口：${viewport}。${runtime.note}`
+      : `${runtime.platform} ${runtime.shell}；当前视口：${viewport}`;
   }
 
   function renderRegisterSelector() {
@@ -178,12 +212,11 @@
     });
 
     dom.clearProgramBtn.addEventListener("click", clearProgram);
-    dom.demoModeBtn.addEventListener("click", toggleDemoMode);
     dom.customImmInput.addEventListener("input", renderOperandPalette);
     dom.customRegisterInput.addEventListener("change", renderOperandPalette);
     dom.customLabelInput.addEventListener("input", renderOperandPalette);
-    dom.prevBtn.addEventListener("click", previousStep);
-    dom.stepBtn.addEventListener("click", stepProgram);
+    dom.prevBtn.addEventListener("click", handlePreviousCommand);
+    dom.stepBtn.addEventListener("click", handleNextCommand);
     dom.autoBtn.addEventListener("click", startAutoRun);
     dom.pauseBtn.addEventListener("click", pauseAutoRun);
     dom.animationSpeedSelect.addEventListener("change", () => {
@@ -194,6 +227,8 @@
     dom.zoomResetBtn.addEventListener("click", () => setCanvasScale(1));
     dom.assistPanelBtn.addEventListener("click", () => toggleAssistPanel());
     dom.assistCloseBtn.addEventListener("click", () => toggleAssistPanel(false));
+    dom.logPanelBtn.addEventListener("click", () => toggleLogPanel());
+    dom.logCloseBtn.addEventListener("click", () => toggleLogPanel(false));
     dom.assistTabs.forEach((tab) => {
       tab.addEventListener("click", () => {
         setAssistTab(tab.dataset.sideTab);
@@ -203,9 +238,6 @@
     dom.saveProgramBtn.addEventListener("click", saveProgramFile);
     dom.importProgramInput.addEventListener("change", (event) => importProgramFile(event.target.files?.[0] || null));
     dom.harmonyWorkspaceToggleBtn.addEventListener("click", toggleHarmonyWorkspaceMode);
-    dom.harmonyWorkspaceResetBtn.addEventListener("click", () => setHarmonyStep(0));
-    dom.harmonyWorkspacePrevBtn.addEventListener("click", () => setHarmonyStep(app.harmonyStep - 1));
-    dom.harmonyWorkspaceNextBtn.addEventListener("click", () => setHarmonyStep(app.harmonyStep + 1));
     dom.harmonyWorkspaceCollapseBtn.addEventListener("click", toggleWorkspaceHarmonyPanel);
     dom.stateTargetType.addEventListener("change", renderStateTargetSelector);
     dom.applyStateValueBtn.addEventListener("click", applyInitialStateValue);
@@ -298,9 +330,11 @@
     bindCanvasSelectionBox();
     bindCanvasPan();
 
-    dom.resetBtn.addEventListener("click", resetMachine);
+    dom.resetBtn.addEventListener("click", handleResetCommand);
     document.addEventListener("keydown", handleGlobalKeyDown);
-    if (!runtime.isOpenHarmony) bindPaneResize();
+    window.addEventListener("resize", updateRuntimeState);
+    window.addEventListener("orientationchange", updateRuntimeState);
+    bindPaneResize();
   }
 
   function bindPaneResize() {
@@ -374,6 +408,38 @@
     app.assistOpen = typeof forced === "boolean" ? forced : !app.assistOpen;
     document.body.classList.toggle("assist-panel-open", app.assistOpen);
     dom.assistPanelBtn.classList.toggle("primary", app.assistOpen);
+  }
+
+  function handlePreviousCommand() {
+    if (app.harmonyWorkspaceMode) {
+      setHarmonyStep(app.harmonyStep - 1);
+      return;
+    }
+    previousStep();
+  }
+
+  function handleNextCommand() {
+    if (app.harmonyWorkspaceMode) {
+      setHarmonyStep(app.harmonyStep + 1);
+      return;
+    }
+    stepProgram();
+  }
+
+  function handleResetCommand() {
+    if (app.harmonyWorkspaceMode) {
+      setHarmonyStep(0);
+      return;
+    }
+    resetMachine();
+  }
+
+  function toggleLogPanel(forced) {
+    app.logOpen = typeof forced === "boolean" ? forced : !app.logOpen;
+    document.body.classList.toggle("log-panel-open", app.logOpen);
+    dom.logPanelBtn.classList.toggle("primary", app.logOpen);
+    dom.logPanelBtn.textContent = app.logOpen ? "▼" : "▲";
+    dom.logPanelBtn.title = app.logOpen ? "收起执行日志与教学反馈" : "展开执行日志与教学反馈";
   }
 
   function setAssistTab(tabName) {
@@ -464,9 +530,7 @@
   }
 
   function minBlockX() {
-    const rawWidth = getComputedStyle(document.documentElement).getPropertyValue("--toolbox-width");
-    const toolboxWidth = Number.parseFloat(rawWidth) || 260;
-    return toolboxWidth + 44;
+    return 24;
   }
 
   function maxInstructionX() {
@@ -612,7 +676,6 @@
     document.body.classList.toggle("harmony-workspace-mode", app.harmonyWorkspaceMode);
     dom.harmonyWorkspaceToggleBtn.classList.toggle("primary", app.harmonyWorkspaceMode);
     dom.harmonyWorkspaceToggleBtn.setAttribute("aria-pressed", String(app.harmonyWorkspaceMode));
-    dom.harmonyWorkspaceControls.hidden = !app.harmonyWorkspaceMode;
     dom.workspaceHarmonyPanel.hidden = !app.harmonyWorkspaceMode;
     syncWorkspaceHarmonyPanel();
     renderHarmony();
@@ -626,7 +689,7 @@
   function syncWorkspaceHarmonyPanel() {
     dom.workspaceHarmonyPanel.classList.toggle("collapsed", app.harmonyWorkspaceCollapsed);
     dom.workspaceHarmonyBody.hidden = app.harmonyWorkspaceCollapsed;
-    dom.harmonyWorkspaceCollapseBtn.textContent = app.harmonyWorkspaceCollapsed ? "展开" : "收起";
+    dom.harmonyWorkspaceCollapseBtn.textContent = app.harmonyWorkspaceCollapsed ? "+" : "×";
     dom.harmonyWorkspaceCollapseBtn.title = app.harmonyWorkspaceCollapsed ? "展开 OpenHarmony 展示栏" : "收起 OpenHarmony 展示栏";
   }
 
@@ -656,9 +719,12 @@
   }
 
   function renderInstructions(errors) {
-    dom.instructionList.innerHTML = "";
+    dom.instructionList.querySelectorAll(".instruction-card, .floating-operand-chip, .empty-workspace-hint").forEach((node) => node.remove());
     if (app.rawInstructions.length === 0) {
-      dom.instructionList.innerHTML = `<p class="hint">还没有指令。点击左侧积木或“添加指令”开始。</p>`;
+      const hint = document.createElement("p");
+      hint.className = "hint empty-workspace-hint";
+      hint.textContent = "还没有指令。点击左侧积木或“添加指令”开始。";
+      dom.instructionList.appendChild(hint);
     }
 
     orderedInstructions().forEach((instruction, index) => {
@@ -732,8 +798,10 @@
     const viewportHeight = dom.programCanvas.clientHeight / app.canvasScale;
     const maxRight = Math.max(viewportWidth + 240, ...items.map((item) => item.x + item.width));
     const maxBottom = Math.max(viewportHeight + 320, ...items.map((item) => item.y + item.height));
+    const harmonyBottom = app.rawInstructions.length ? 96 + (app.rawInstructions.length - 1) * 176 + 190 : 360;
     dom.instructionList.style.width = `${Math.ceil(maxRight)}px`;
     dom.instructionList.style.height = `${Math.ceil(maxBottom)}px`;
+    dom.instructionList.style.setProperty("--softbus-height", `${Math.ceil(Math.max(360, harmonyBottom))}px`);
   }
 
   function renderLooseOperands() {
@@ -1208,11 +1276,6 @@
     updateInstruction(instruction.id, slot.dataset.field, payload.value);
     renderError("");
     return true;
-  }
-
-  function toggleDemoMode() {
-    document.body.classList.toggle("demo-mode");
-    dom.demoModeBtn.classList.toggle("primary", document.body.classList.contains("demo-mode"));
   }
 
   function renderOperandChip(kind, value, draggable) {
@@ -2097,9 +2160,10 @@
 
   function updateRunState() {
     document.body.classList.toggle("is-running", Boolean(app.timer));
-    dom.prevBtn.disabled = app.stateHistory.length === 0 || Boolean(app.timer) || app.isAnimating;
-    dom.stepBtn.disabled = app.state.halted || Boolean(app.timer) || app.isAnimating;
-    dom.autoBtn.disabled = app.state.halted || Boolean(app.timer);
+    const harmonyControlling = app.harmonyWorkspaceMode && !app.timer && !app.isAnimating;
+    dom.prevBtn.disabled = harmonyControlling ? false : app.stateHistory.length === 0 || Boolean(app.timer) || app.isAnimating;
+    dom.stepBtn.disabled = harmonyControlling ? false : app.state.halted || Boolean(app.timer) || app.isAnimating;
+    dom.autoBtn.disabled = app.harmonyWorkspaceMode || app.state.halted || Boolean(app.timer);
     dom.pauseBtn.disabled = !app.timer && !app.isAnimating;
     if (app.isAnimating) {
       dom.runState.textContent = "动画中";

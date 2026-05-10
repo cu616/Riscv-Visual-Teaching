@@ -18,17 +18,19 @@ Blockly 不需要账号、注册或 API。此前桌面白屏主要来自 Electro
 
 团队成员第一次接手时，建议先阅读：
 
-1. [文档状态与路线索引](docs/文档状态与路线索引.md)
-2. [技术路线决策与阶段复盘](docs/技术路线决策与阶段复盘.md)
+1. [文档目录向导](docs/README.md)
+2. [文档状态与路线索引](docs/文档状态与路线索引.md)
 3. [工程目录与代码分区说明](docs/工程目录与代码分区说明.md)
-4. [项目进度与结构总结](docs/项目进度与结构总结.md)
-5. [产品说明：当前阶段版](docs/产品说明_当前阶段版.md)
-6. [机器状态格动画重构方案](docs/机器状态格动画重构方案.md)
-7. [明早验收与问题定位清单](docs/明早验收与问题定位清单.md)
-8. [长期自动化开发任务：非 Blockly 主线工程化](docs/长期自动化开发任务_非Blockly主线工程化.md)
-9. [自动化开发执行记录](docs/自动化开发执行记录.md)
-10. [OpenHarmony ArkWeb 移植版说明](openharmony-port/README.md)
-11. [Blockly 迁移阶段方案](docs/Blockly迁移阶段方案.md)
+4. [技术路线决策与阶段复盘](docs/技术路线决策与阶段复盘.md)
+5. [项目进度与结构总结](docs/项目进度与结构总结.md)
+6. [2026-05-09 UI 界面与功能改动总结](docs/2026-05-09_UI界面与功能改动总结.md)
+
+之后按任务进入：
+
+- 做 `app/` 主线和 UI：读 [机器状态格动画重构方案](docs/机器状态格动画重构方案.md) 与 [长期自动化开发任务：非 Blockly 主线工程化](docs/长期自动化开发任务_非Blockly主线工程化.md)。
+- 做 OpenHarmony / 香橙派：读 [OpenHarmony ArkWeb 移植版说明](openharmony-port/README.md)、[OH 开发经验与 AI 接手须知](openharmony-port/docs/OH开发经验与AI接手须知.md) 和 [OpenHarmony UI 与展示移植方案](openharmony-port/docs/2026-05-09_UI与OpenHarmony展示移植方案.md)。
+- 写答辩和产品材料：读 [产品说明：当前阶段版](docs/产品说明_当前阶段版.md) 与 [演示脚本](docs/演示脚本.md)。
+- 参考 Blockly 技术验证：读 [Blockly 迁移阶段方案](docs/Blockly迁移阶段方案.md)，但它已降级为参考资产。
 
 ## 运行非 Blockly 主线原型
 

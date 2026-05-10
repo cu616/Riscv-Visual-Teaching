@@ -295,6 +295,7 @@ loadCase 返回“原生文件接口待实现”
 后续 AI 接手时，先读本文档，再读：
 
 ```text
+openharmony-port/docs/2026-05-09_UI与OpenHarmony展示移植方案.md
 openharmony-port/docs/HDC部署检查清单.md
 openharmony-port/docs/移植记录.md
 openharmony-port/README.md
