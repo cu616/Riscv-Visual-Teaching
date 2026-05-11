@@ -12,7 +12,8 @@ body {
 
 .app-shell {
   min-width: 1280px;
-  min-height: 100vh;
+  height: 100vh;
+  min-height: 0;
 }
 
 .topbar {
@@ -120,6 +121,15 @@ button,
 .program-canvas {
   min-height: 0;
   touch-action: none;
+}
+
+.assist-scroll {
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  padding-bottom: 96px;
+  -webkit-overflow-scrolling: touch;
 }
 
 .resize-handle {
@@ -279,12 +289,16 @@ body.state-animation-active .workspace-harmony-panel:not([hidden]) {
 }
 
 .state-editor-row {
-  grid-template-columns: 1fr 1fr;
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr) minmax(42px, 0.62fr) minmax(0, 0.72fr) minmax(0, 0.72fr);
+  gap: 6px;
+  width: 100%;
 }
 
 .state-editor-row button,
 .state-editor-row input,
 .state-editor-row select {
+  width: 100%;
   min-height: 28px;
   padding: 5px;
 }
@@ -325,6 +339,7 @@ body.state-animation-active .workspace-harmony-panel:not([hidden]) {
 .log-drawer-toggle {
   left: calc(16px + var(--toolbox-width));
   right: 24px;
+  bottom: 4px;
 }
 
 .bottom-resize-handle {

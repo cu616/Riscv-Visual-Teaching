@@ -22,6 +22,7 @@
     instructionList: document.getElementById("instructionList"),
     assemblyPreview: document.getElementById("assemblyPreview"),
     clearProgramBtn: document.getElementById("clearProgramBtn"),
+    undoEditBtn: document.getElementById("undoEditBtn"),
     programCanvas: document.getElementById("programCanvas"),
     programDropZone: document.getElementById("programDropZone"),
     zoomOutBtn: document.getElementById("zoomOutBtn"),
@@ -120,6 +121,7 @@
     changedRegisters: [],
     changedMemoryAddresses: [],
     stateHistory: [],
+    editHistory: [],
     lastExecutedInstructionId: null,
     animationTimers: [],
     timer: null
@@ -138,7 +140,8 @@
     notes: { title: "", goal: "", steps: "" },
     harmonyWorkspaceMode: false,
     harmonyWorkspaceCollapsed: false,
-    harmonyStep: 0
+    harmonyStep: 0,
+    stateDockOffset: { x: 0, y: 0 }
   };
   const runtime = createRuntimeInfo();
   let activeImmediateEditor = null;
@@ -212,13 +215,14 @@
     });
 
     dom.clearProgramBtn.addEventListener("click", clearProgram);
+    dom.undoEditBtn.addEventListener("click", undoLastEdit);
     dom.customImmInput.addEventListener("input", renderOperandPalette);
     dom.customRegisterInput.addEventListener("change", renderOperandPalette);
     dom.customLabelInput.addEventListener("input", renderOperandPalette);
     dom.prevBtn.addEventListener("click", handlePreviousCommand);
     dom.stepBtn.addEventListener("click", handleNextCommand);
     dom.autoBtn.addEventListener("click", startAutoRun);
-    dom.pauseBtn.addEventListener("click", pauseAutoRun);
+    dom.pauseBtn.addEventListener("click", handlePauseCommand);
     dom.animationSpeedSelect.addEventListener("change", () => {
       app.animationSpeed = Number(dom.animationSpeedSelect.value) || 1;
     });
@@ -329,6 +333,7 @@
     bindCanvasPinchZoom();
     bindCanvasSelectionBox();
     bindCanvasPan();
+    bindStateAnimationDockDrag();
 
     dom.resetBtn.addEventListener("click", handleResetCommand);
     document.addEventListener("keydown", handleGlobalKeyDown);
@@ -352,6 +357,7 @@
           y: event.clientY,
           toolbox: Number.parseFloat(styles.getPropertyValue("--toolbox-width")),
           assistant: Number.parseFloat(styles.getPropertyValue("--assistant-width")),
+          assistantHeight: dom.assistPanel.getBoundingClientRect().height,
           log: Number.parseFloat(styles.getPropertyValue("--log-height"))
         };
       });
@@ -366,6 +372,11 @@
         } else if (start.kind === "assistant") {
           const next = ui.clamp(start.assistant - dx, 280, 640);
           root.style.setProperty("--assistant-width", `${next}px`);
+        } else if (start.kind === "assistant-height") {
+          const dy = event.clientY - start.y;
+          const maxHeight = Math.max(260, window.innerHeight - 36);
+          const next = ui.clamp(start.assistantHeight + dy, 260, maxHeight);
+          root.style.setProperty("--assistant-height", `${next}px`);
         } else if (start.kind === "log") {
           const dy = event.clientY - start.y;
           const next = ui.clamp(start.log - dy, 110, 360);
@@ -379,6 +390,47 @@
         start = null;
       });
     });
+  }
+
+  function bindStateAnimationDockDrag() {
+    const dock = document.getElementById("stateAnimationDock");
+    if (!dock) return;
+    let drag = null;
+    dock.title = "拖动可调整数据演示动画卡片位置；双击恢复默认位置";
+    dock.addEventListener("pointerdown", (event) => {
+      if (dock.hidden || event.button !== 0) return;
+      event.preventDefault();
+      dock.setPointerCapture(event.pointerId);
+      dock.classList.add("dragging");
+      drag = {
+        pointerId: event.pointerId,
+        x: event.clientX,
+        y: event.clientY,
+        offsetX: app.stateDockOffset.x,
+        offsetY: app.stateDockOffset.y
+      };
+    });
+    dock.addEventListener("pointermove", (event) => {
+      if (!drag) return;
+      const nextX = ui.clamp(drag.offsetX + event.clientX - drag.x, -180, 180);
+      const nextY = ui.clamp(drag.offsetY + event.clientY - drag.y, -120, 220);
+      setStateDockOffset(nextX, nextY);
+    });
+    const stopDrag = (event) => {
+      if (!drag) return;
+      dock.releasePointerCapture(drag.pointerId || event.pointerId);
+      dock.classList.remove("dragging");
+      drag = null;
+    };
+    dock.addEventListener("pointerup", stopDrag);
+    dock.addEventListener("pointercancel", stopDrag);
+    dock.addEventListener("dblclick", () => setStateDockOffset(0, 0));
+  }
+
+  function setStateDockOffset(x, y) {
+    app.stateDockOffset = { x, y };
+    document.documentElement.style.setProperty("--state-dock-x", `${x}px`);
+    document.documentElement.style.setProperty("--state-dock-y", `${y}px`);
   }
 
   function switchView(viewId) {
@@ -411,25 +463,19 @@
   }
 
   function handlePreviousCommand() {
-    if (app.harmonyWorkspaceMode) {
-      setHarmonyStep(app.harmonyStep - 1);
-      return;
-    }
     previousStep();
   }
 
   function handleNextCommand() {
-    if (app.harmonyWorkspaceMode) {
-      setHarmonyStep(app.harmonyStep + 1);
-      return;
-    }
     stepProgram();
   }
 
   function handleResetCommand() {
+    const shouldResetHarmony = app.harmonyWorkspaceMode || app.harmonyStep !== 0;
+    if (shouldResetHarmony) setHarmonyStep(0);
     if (app.harmonyWorkspaceMode) {
-      setHarmonyStep(0);
-      return;
+      app.harmonyWorkspaceCollapsed = false;
+      syncWorkspaceHarmonyPanel();
     }
     resetMachine();
   }
@@ -516,7 +562,71 @@
     return [...app.rawInstructions].sort((a, b) => (a.y ?? 0) - (b.y ?? 0) || (a.x ?? 0) - (b.x ?? 0));
   }
 
+  function createEditSnapshot(label = "") {
+    return {
+      label,
+      rawInstructions: app.rawInstructions.map((instruction) => ({ ...instruction })),
+      looseOperands: app.looseOperands.map((operand) => ({ ...operand })),
+      selectedInstructionIds: [...app.selectedInstructionIds],
+      selectedLooseOperandIds: [...app.selectedLooseOperandIds],
+      initialState: {
+        registers: { ...app.initialState.registers },
+        memory: { ...app.initialState.memory }
+      },
+      notes: { ...app.notes },
+      displayBase: app.displayBase,
+      harmonyStep: app.harmonyStep
+    };
+  }
+
+  function pushEditHistory(label) {
+    app.editHistory.push(createEditSnapshot(label));
+    if (app.editHistory.length > 40) app.editHistory.shift();
+    syncUndoButton();
+  }
+
+  function undoLastEdit() {
+    const snapshot = app.editHistory.pop();
+    if (!snapshot) return;
+    pauseAutoRun();
+    clearAnimationTimers();
+    stateAnimation.clearStateAnimation();
+    app.rawInstructions = snapshot.rawInstructions.map((instruction) => ({ ...instruction }));
+    app.looseOperands = snapshot.looseOperands.map((operand) => ({ ...operand }));
+    app.selectedInstructionIds = [...snapshot.selectedInstructionIds];
+    app.selectedLooseOperandIds = [...snapshot.selectedLooseOperandIds];
+    app.initialState = {
+      registers: { ...snapshot.initialState.registers },
+      memory: { ...snapshot.initialState.memory }
+    };
+    app.notes = { ...snapshot.notes };
+    app.displayBase = snapshot.displayBase;
+    app.harmonyStep = snapshot.harmonyStep;
+    app.pendingOperand = null;
+    syncNotesInputs();
+    renderStateTargetSelector();
+    resetMachine(false);
+    renderAll();
+    syncUndoButton();
+    renderError(snapshot.label ? `已撤销：${snapshot.label}` : "已撤销上一步编辑。");
+  }
+
+  function syncUndoButton() {
+    if (!dom.undoEditBtn) return;
+    dom.undoEditBtn.disabled = app.editHistory.length === 0 || Boolean(app.timer) || app.isAnimating;
+    dom.undoEditBtn.title = app.editHistory.length
+      ? `撤销：${app.editHistory[app.editHistory.length - 1].label || "上一步编辑"}`
+      : "暂无可撤销的编辑操作";
+  }
+
+  function isTextEditingTarget(target = document.activeElement) {
+    if (!target) return false;
+    if (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return true;
+    return target.isContentEditable || Boolean(target.closest?.("[contenteditable='true']"));
+  }
+
   function addInstruction(opcode, position = {}) {
+    pushEditHistory("add instruction");
     const nextY = app.rawInstructions.length ? Math.max(...app.rawInstructions.map((item) => item.y ?? 0)) + 154 : 96;
     app.rawInstructions.push(createDefaultInstruction(opcode, { x: position.x ?? defaultInstructionX(), y: position.y ?? nextY }));
     resetMachine(false);
@@ -555,7 +665,8 @@
     }));
   }
 
-  function updateInstruction(id, field, value) {
+  function updateInstruction(id, field, value, options = {}) {
+    if (options.saveUndo !== false) pushEditHistory("edit instruction");
     app.rawInstructions = app.rawInstructions.map((instruction) => {
       if (instruction.id !== id) return instruction;
       const updated = { ...instruction, [field]: FIELD_KINDS[field] === "immediate" ? Number(value) : value };
@@ -569,6 +680,7 @@
   }
 
   function deleteInstruction(id) {
+    pushEditHistory("delete instruction");
     app.rawInstructions = app.rawInstructions.filter((instruction) => instruction.id !== id);
     app.selectedInstructionIds = app.selectedInstructionIds.filter((selectedId) => selectedId !== id);
     resetMachine(false);
@@ -582,6 +694,8 @@
   }
 
   function clearProgram() {
+    if (!app.rawInstructions.length && !app.looseOperands.length) return;
+    pushEditHistory("clear program");
     app.rawInstructions = [];
     app.looseOperands = [];
     app.selectedLooseOperandIds = [];
@@ -591,6 +705,7 @@
   }
 
   function addLooseOperand(payload, event) {
+    pushEditHistory("add loose operand");
     app.rawInstructions = operandModel.detachPayloadSource(app.rawInstructions, payload);
     const point = canvasPointFromClient(event.clientX, event.clientY);
     app.looseOperands.push(operandModel.createLooseOperand(payload, {
@@ -626,6 +741,7 @@
       if (parsed.errors.length) {
         throw new Error(parsed.errors[0]);
       }
+      pushEditHistory("import case");
       app.rawInstructions = loaded.instructions.map((instruction, index) => ({
         ...instruction,
         id: instruction.id || `imported-${index}`,
@@ -672,6 +788,8 @@
       app.harmonyWorkspaceCollapsed = false;
       setAssistTab("machine");
       toggleAssistPanel(true);
+    } else {
+      app.harmonyWorkspaceCollapsed = false;
     }
     document.body.classList.toggle("harmony-workspace-mode", app.harmonyWorkspaceMode);
     dom.harmonyWorkspaceToggleBtn.classList.toggle("primary", app.harmonyWorkspaceMode);
@@ -832,6 +950,7 @@
   }
 
   function moveInstruction(id, x, y) {
+    pushEditHistory("move instruction");
     app.rawInstructions = restackInstructions(id, x, y);
     resetMachine(false);
     renderAll();
@@ -926,6 +1045,7 @@
       moveInstruction(activeId, Math.max(minBlockX(), fallbackX), fallbackY);
       return;
     }
+    pushEditHistory("move blocks");
     const instructionPatch = new Map(movedInstructions.map((item) => [item.id, item]));
     const loosePatch = new Map(movedLooseOperands.map((item) => [item.id, item]));
     app.rawInstructions = app.rawInstructions.map((instruction) => {
@@ -1122,8 +1242,9 @@
           renderError(`${slot.dataset.field} 槽位需要${ui.slotName(slot.dataset.kind)}积木。`);
           return;
         }
+        pushEditHistory("fill operand slot");
         app.rawInstructions = operandModel.detachPayloadSource(app.rawInstructions, payload);
-        updateInstruction(instruction.id, slot.dataset.field, payload.value);
+        updateInstruction(instruction.id, slot.dataset.field, payload.value, { saveUndo: false });
       });
       slot.addEventListener("click", () => {
         if (applyPendingOperandToSlot(instruction, slot)) return;
@@ -1146,8 +1267,9 @@
       dock.classList.remove("accepting");
       const payload = ui.readDragPayload(event);
       if (payload && payload.kind === "label") {
+        pushEditHistory("fill label slot");
         app.rawInstructions = operandModel.detachPayloadSource(app.rawInstructions, payload);
-        updateInstruction(instruction.id, "labelTag", payload.value);
+        updateInstruction(instruction.id, "labelTag", payload.value, { saveUndo: false });
       }
     });
     const chip = dock.querySelector(".operand-chip");
@@ -1184,9 +1306,10 @@
     dock.addEventListener("click", () => {
       if (app.pendingOperand?.kind === "label") {
         const payload = app.pendingOperand;
+        pushEditHistory("fill label slot");
         app.rawInstructions = operandModel.detachPayloadSource(app.rawInstructions, app.pendingOperand);
         app.pendingOperand = null;
-        updateInstruction(instruction.id, "labelTag", payload.value);
+        updateInstruction(instruction.id, "labelTag", payload.value, { saveUndo: false });
       }
     });
     dock.addEventListener("dblclick", () => {
@@ -1271,9 +1394,10 @@
       return true;
     }
     const payload = app.pendingOperand;
+    pushEditHistory("fill operand slot");
     app.rawInstructions = operandModel.detachPayloadSource(app.rawInstructions, payload);
     app.pendingOperand = null;
-    updateInstruction(instruction.id, slot.dataset.field, payload.value);
+    updateInstruction(instruction.id, slot.dataset.field, payload.value, { saveUndo: false });
     renderError("");
     return true;
   }
@@ -1398,9 +1522,10 @@
       selectPendingOperand(payload);
       return;
     }
+    pushEditHistory("fill operand slot");
     app.rawInstructions = operandModel.detachPayloadSource(app.rawInstructions, payload);
     app.pendingOperand = null;
-    updateInstruction(target.instructionId, target.field, payload.value);
+    updateInstruction(target.instructionId, target.field, payload.value, { saveUndo: false });
     renderError("");
   }
 
@@ -1612,6 +1737,7 @@
           y: ui.snapToGrid(Number.parseFloat(targetChip?.style.top || item.y), 12)
         };
       });
+      pushEditHistory("move loose operand");
       app.looseOperands = app.looseOperands.map((item) => {
         const patch = patches.find((candidate) => candidate.id === item.id);
         return patch ? { ...item, x: Math.max(minBlockX(), patch.x), y: patch.y } : item;
@@ -1658,6 +1784,7 @@
   }
 
   function attachLooseOperand(operand, target) {
+    pushEditHistory("attach loose operand");
     app.rawInstructions = operandModel.attachOperandToInstruction(app.rawInstructions, operand, target, FIELD_KINDS);
     app.looseOperands = operandModel.removeLooseOperand(app.looseOperands, operand.id);
     app.selectedLooseOperandIds = app.selectedLooseOperandIds.filter((id) => id !== operand.id);
@@ -1666,6 +1793,7 @@
   }
 
   function updateLooseOperand(id, patch) {
+    pushEditHistory("move loose operand");
     app.looseOperands = operandModel.updateLooseOperand(app.looseOperands, id, patch);
     renderAll();
   }
@@ -1675,6 +1803,8 @@
   }
 
   function deleteLooseOperands(ids) {
+    if (!ids.length) return;
+    pushEditHistory("delete loose operand");
     app.looseOperands = app.looseOperands.filter((operand) => !ids.includes(operand.id));
     app.selectedLooseOperandIds = app.selectedLooseOperandIds.filter((id) => !ids.includes(id));
     renderAll();
@@ -1697,8 +1827,14 @@
   }
 
   function handleGlobalKeyDown(event) {
+    if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "z") {
+      if (isTextEditingTarget()) return;
+      event.preventDefault();
+      undoLastEdit();
+      return;
+    }
     if (event.key !== "Delete" && event.key !== "Backspace") return;
-    if (["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) return;
+    if (isTextEditingTarget()) return;
     if (!app.selectedLooseOperandIds.length && !app.selectedInstructionIds.length) return;
     event.preventDefault();
     if (app.selectedInstructionIds.length) deleteInstructions(app.selectedInstructionIds);
@@ -1774,6 +1910,8 @@
   }
 
   function deleteInstructions(ids) {
+    if (!ids.length) return;
+    pushEditHistory("delete instructions");
     app.rawInstructions = app.rawInstructions.filter((instruction) => !ids.includes(instruction.id));
     app.selectedInstructionIds = app.selectedInstructionIds.filter((id) => !ids.includes(id));
     resetMachine(false);
@@ -1888,7 +2026,7 @@
         <div class="state-row-label">@${formatValue(row[0])}</div>
         ${row.map((address) => {
           const initialized = Object.prototype.hasOwnProperty.call(app.initialState.memory, address);
-          return `<button class="mem-cell ${app.changedMemoryAddresses.includes(address) ? "changed" : ""} ${initialized ? "initialized" : ""}" data-type="memory" data-name="${address}" title="memory[${address}]"><strong>${formatValue(app.state.memory[address])}</strong></button>`;
+          return `<button class="mem-cell ${app.changedMemoryAddresses.includes(address) ? "changed" : ""} ${initialized ? "initialized" : ""}" data-type="memory" data-name="${address}" title="存储器[${address}]"><strong>${formatValue(app.state.memory[address])}</strong></button>`;
         }).join("")}
       `)
       .join("");
@@ -1915,6 +2053,7 @@
 
   function applyInitialStateValue() {
     try {
+      pushEditHistory("set initial state");
       app.initialState = machineState.setInitialValue(
         app.initialState,
         dom.stateTargetType.value,
@@ -1930,6 +2069,7 @@
   }
 
   function clearInitialStateValue() {
+    pushEditHistory("clear initial state");
     app.initialState = machineState.clearInitialValue(app.initialState, dom.stateTargetType.value, dom.stateTargetName.value);
     resetMachine(false);
     renderAll();
@@ -1950,7 +2090,7 @@
   function renderStateDetail(type, name) {
     const initial = type === "register" ? app.initialState.registers[name] : app.initialState.memory[Number(name)];
     const current = type === "register" ? app.state.registers[name] : app.state.memory[Number(name)];
-    const label = type === "register" ? name : `memory[${name}]`;
+    const label = type === "register" ? name : `存储器[${name}]`;
     dom.selectedStateDetail.textContent = `${label} 当前值：${formatValue(current || 0)}；初始值：${initial === undefined ? "默认" : formatValue(initial)}`;
   }
 
@@ -2028,25 +2168,33 @@
   async function renderExecutionResult(result, previousState, previousPc, total) {
     const instruction = result.instruction;
     const duration = animationDuration();
-    setAssistTab("machine");
-    toggleAssistPanel(true);
+    const shouldShowDataAnimation = app.harmonyWorkspaceMode || (app.assistOpen && app.activeAssistTab === "machine");
+    if (app.harmonyWorkspaceMode) {
+      setAssistTab("machine");
+      toggleAssistPanel(true);
+      setHarmonyStep(app.harmonyStep + 1);
+    }
     app.isAnimating = true;
     app.animationProgress = { index: previousPc, total, fraction: 0, label: "start" };
     updateExecutionProgress();
     updateRunState();
-    await stateAnimation.playStateAnimation(result, {
-      previousState,
-      currentState: app.state,
-      duration,
-      onProgress(fraction) {
-        app.animationProgress = { index: previousPc, total, fraction, label: app.animationProgress?.label || "" };
-        updateExecutionProgress();
-      },
-      onPhase(label) {
-        app.animationProgress = { index: previousPc, total, fraction: app.animationProgress?.fraction || 0, label };
-        updateExecutionProgress();
-      }
-    });
+    if (shouldShowDataAnimation) {
+      await stateAnimation.playStateAnimation(result, {
+        previousState,
+        currentState: app.state,
+        duration,
+        onProgress(fraction) {
+          app.animationProgress = { index: previousPc, total, fraction, label: app.animationProgress?.label || "" };
+          updateExecutionProgress();
+        },
+        onPhase(label) {
+          app.animationProgress = { index: previousPc, total, fraction: app.animationProgress?.fraction || 0, label };
+          updateExecutionProgress();
+        }
+      });
+    } else {
+      await waitForAnimationDuration(duration);
+    }
     app.isAnimating = false;
     app.animationProgress = null;
     updateExecutionProgress();
@@ -2064,12 +2212,16 @@
       document.querySelector("#pcNode strong").textContent = app.state.pc;
       document.getElementById("rs1Node").textContent = instruction.rs1 || "rs1";
       document.getElementById("rs2Node").textContent = datapath.operandTwoLabel(instruction);
-      document.querySelector("#writebackNode strong").textContent = instruction.rd || (instruction.opcode === "sw" ? "memory" : "rd");
+      document.querySelector("#writebackNode strong").textContent = instruction.rd || (instruction.opcode === "sw" ? "存储器" : "rd");
       document.querySelector("#aluNode strong").textContent = result.animationPlan.find((item) => typeof item === "string" && item.includes("=")) || datapath.aluLabel(instruction);
       document.querySelector("#memoryNode strong").textContent = datapath.memoryLabel(instruction);
       document.querySelector("#branchNode strong").textContent = datapath.branchLabel(instruction);
-      playAnimationFrames(result);
+      if (shouldShowDataAnimation) playAnimationFrames(result);
     }
+  }
+
+  function waitForAnimationDuration(duration) {
+    return new Promise((resolve) => window.setTimeout(resolve, Math.max(0, duration)));
   }
 
   function playAnimationFrames(result) {
@@ -2100,7 +2252,7 @@
   }
 
   function animationDuration() {
-    return Math.round(3000 / (app.animationSpeed || 1));
+    return Math.round(6000 / (app.animationSpeed || 1));
   }
 
   function resetMachine(render = true) {
@@ -2117,7 +2269,7 @@
     const currentInstructionLabel = document.getElementById("currentInstructionLabel");
     const stepExplanation = document.getElementById("stepExplanation");
     if (currentInstructionLabel) currentInstructionLabel.textContent = "等待执行";
-    if (stepExplanation) stepExplanation.textContent = "点击“单步执行”，观察寄存器、ALU、内存和 PC 的变化。";
+    if (stepExplanation) stepExplanation.textContent = "点击“单步执行”，观察寄存器、ALU、存储器和 PC 的变化。";
     dom.visualNodes.forEach((node) => node.classList.remove("active"));
     const instructionNode = document.querySelector("#instructionNode strong");
     const pcNode = document.querySelector("#pcNode strong");
@@ -2158,14 +2310,26 @@
     updateRunState();
   }
 
+  function handlePauseCommand() {
+    if (app.isAnimating && stateAnimation.toggleStateAnimationPause?.()) {
+      updateRunState();
+      return;
+    }
+    pauseAutoRun();
+  }
+
   function updateRunState() {
+    const animationPaused = Boolean(stateAnimation.isStateAnimationPaused?.());
     document.body.classList.toggle("is-running", Boolean(app.timer));
-    const harmonyControlling = app.harmonyWorkspaceMode && !app.timer && !app.isAnimating;
-    dom.prevBtn.disabled = harmonyControlling ? false : app.stateHistory.length === 0 || Boolean(app.timer) || app.isAnimating;
-    dom.stepBtn.disabled = harmonyControlling ? false : app.state.halted || Boolean(app.timer) || app.isAnimating;
-    dom.autoBtn.disabled = app.harmonyWorkspaceMode || app.state.halted || Boolean(app.timer);
+    dom.prevBtn.disabled = app.stateHistory.length === 0 || Boolean(app.timer) || app.isAnimating;
+    dom.stepBtn.disabled = app.state.halted || Boolean(app.timer) || app.isAnimating;
+    dom.autoBtn.disabled = app.state.halted || Boolean(app.timer);
     dom.pauseBtn.disabled = !app.timer && !app.isAnimating;
-    if (app.isAnimating) {
+    dom.pauseBtn.title = animationPaused ? "继续动画" : "暂停";
+    dom.pauseBtn.setAttribute("aria-label", animationPaused ? "继续动画" : "暂停");
+    if (app.isAnimating && animationPaused) {
+      dom.runState.textContent = "动画暂停";
+    } else if (app.isAnimating) {
       dom.runState.textContent = "动画中";
     } else if (app.timer) {
       dom.runState.textContent = "自动执行中";
@@ -2174,6 +2338,7 @@
     } else {
       dom.runState.textContent = "就绪";
     }
+    syncUndoButton();
   }
 
   function updateExecutionProgress() {
@@ -2417,6 +2582,7 @@
     dom.exampleList.querySelectorAll("button").forEach((button) => {
       button.addEventListener("click", () => {
         const example = EXAMPLES.find((item) => item.id === button.dataset.example);
+        pushEditHistory("load example");
         app.rawInstructions = example.instructions.map((instruction, index) => ({
           ...createDefaultInstruction(instruction.opcode, { x: defaultInstructionX(), y: 96 + index * 154 }),
           ...instruction

@@ -1,5 +1,7 @@
 # OpenHarmony 工作台展示整合修改总结
 
+> 状态说明：本文是 OpenHarmony 工作台展示能力的阶段整合记录。当前 OpenHarmony 移植总体路线请以 [OpenHarmony ArkWeb 移植版说明](../openharmony-port/README.md) 和 [2026-05-09 UI 与 OpenHarmony 展示移植方案](../openharmony-port/docs/2026-05-09_UI与OpenHarmony展示移植方案.md) 为准。
+
 本文档记录本轮对 `Riscv-Visual-Teaching` 工作区的主要修改，便于上传 GitHub、组内交接和后续答辩说明。
 
 ## 一、修改目标

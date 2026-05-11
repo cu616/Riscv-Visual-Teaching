@@ -3,6 +3,7 @@
   const LOGIC_OPS = ["and", "or", "xor", "andi", "ori", "xori"];
   const SHIFT_OPS = ["sll", "srl", "sra", "slli", "srli", "srai"];
   const BRANCH_OPS = ["beq", "bne", "blt", "bge", "bltu", "bgeu", "bltz"];
+  let activeAnimation = null;
 
   function playStateAnimation(result, context = {}) {
     clearStateAnimation();
@@ -14,38 +15,63 @@
     const currentState = context.currentState;
     const steps = buildSteps(instruction, previousState, currentState, result);
     const stepDuration = duration / Math.max(steps.length, 1);
-    const timers = [];
-    let startedAt = performance.now();
+    const controller = {
+      cancelled: false,
+      paused: false,
+      frameId: 0,
+      pausedSince: 0
+    };
+    activeAnimation = controller;
 
     return new Promise((resolve) => {
-      steps.forEach((step, index) => {
-        timers.push(window.setTimeout(() => {
-          clearTransientClasses();
-          applyStep(step);
-          context.onPhase?.(step.label || "");
-        }, index * stepDuration));
-      });
+      let elapsed = 0;
+      let lastTime = performance.now();
+      let appliedIndex = -1;
 
-      const progressTimer = window.setInterval(() => {
-        const elapsed = Math.min(performance.now() - startedAt, duration);
-        context.onProgress?.(elapsed / duration);
-      }, 40);
-      timers.push(progressTimer);
-
-      timers.push(window.setTimeout(() => {
-        window.clearInterval(progressTimer);
+      const finish = () => {
+        if (activeAnimation === controller) activeAnimation = null;
         clearTransientClasses();
         scheduleExpressionDockHide();
         context.onProgress?.(1);
         context.onPhase?.(result.explanation || "");
         resolve();
-      }, duration + 40));
+      };
 
-      window.__riscvStateAnimationTimers = timers;
+      const tick = (time) => {
+        if (controller.cancelled) {
+          if (activeAnimation === controller) activeAnimation = null;
+          resolve();
+          return;
+        }
+        if (!controller.paused) {
+          elapsed += Math.max(0, time - lastTime);
+          const nextIndex = Math.min(steps.length - 1, Math.floor(elapsed / stepDuration));
+          if (nextIndex !== appliedIndex && steps[nextIndex]) {
+            appliedIndex = nextIndex;
+            clearTransientClasses();
+            applyStep(steps[nextIndex]);
+            context.onPhase?.(steps[nextIndex].label || "");
+          }
+          context.onProgress?.(Math.min(elapsed / duration, 1));
+        }
+        lastTime = time;
+        if (elapsed >= duration) {
+          finish();
+          return;
+        }
+        controller.frameId = window.requestAnimationFrame(tick);
+      };
+
+      controller.frameId = window.requestAnimationFrame(tick);
     });
   }
 
   function clearStateAnimation() {
+    if (activeAnimation) {
+      activeAnimation.cancelled = true;
+      window.cancelAnimationFrame(activeAnimation.frameId);
+      activeAnimation = null;
+    }
     (window.__riscvStateAnimationTimers || []).forEach((timer) => {
       window.clearTimeout(timer);
       window.clearInterval(timer);
@@ -53,20 +79,53 @@
     window.__riscvStateAnimationTimers = [];
     window.clearTimeout(window.__riscvExpressionHideTimer);
     clearTransientClasses();
-    document.querySelectorAll(".state-fly-token, .state-operation-badge, .state-expression-badge").forEach((element) => element.remove());
+    document.querySelectorAll(".state-fly-token, .state-operation-badge, .state-expression-badge, .state-change-card-row").forEach((element) => element.remove());
     hideExpressionDock();
+  }
+
+  function pauseStateAnimation() {
+    if (!activeAnimation || activeAnimation.paused) return false;
+    activeAnimation.paused = true;
+    document.body.classList.add("state-animation-paused");
+    return true;
+  }
+
+  function resumeStateAnimation() {
+    if (!activeAnimation || !activeAnimation.paused) return false;
+    activeAnimation.paused = false;
+    document.body.classList.remove("state-animation-paused");
+    return true;
+  }
+
+  function toggleStateAnimationPause() {
+    if (!activeAnimation) return false;
+    return activeAnimation.paused ? resumeStateAnimation() : pauseStateAnimation();
+  }
+
+  function isStateAnimationPaused() {
+    return Boolean(activeAnimation?.paused);
   }
 
   function buildSteps(instruction, previousState, currentState, result) {
     const opcode = instruction.opcode;
-    if (opcode === "lw") return buildLoadSteps(instruction, previousState, currentState, result);
-    if (opcode === "sw") return buildStoreSteps(instruction, previousState, currentState, result);
+    if (opcode === "lw") return mergeFinalPcChange(buildLoadSteps(instruction, previousState, currentState, result));
+    if (opcode === "sw") return mergeFinalPcChange(buildStoreSteps(instruction, previousState, currentState, result));
     if (BRANCH_OPS.includes(opcode)) return buildBranchSteps(instruction, previousState, currentState);
-    if (["jal", "jalr", "j"].includes(opcode)) return buildJumpSteps(instruction, previousState, currentState, result);
+    if (["jal", "jalr", "j"].includes(opcode)) return mergeFinalPcChange(buildJumpSteps(instruction, previousState, currentState, result));
     if (ARITHMETIC_OPS.includes(opcode) || LOGIC_OPS.includes(opcode) || SHIFT_OPS.includes(opcode)) {
-      return buildAluSteps(instruction, previousState, currentState, result);
+      return mergeFinalPcChange(buildAluSteps(instruction, previousState, currentState, result));
     }
     return [{ kind: "pc", pc: currentState?.pc, label: "PC" }];
+  }
+
+  function mergeFinalPcChange(steps) {
+    const last = steps[steps.length - 1];
+    const previous = steps[steps.length - 2];
+    if (last?.kind === "pc" && ["write", "memory-write"].includes(previous?.kind)) {
+      previous.pcChange = last;
+      return steps.slice(0, -1);
+    }
+    return steps;
   }
 
   function buildAluSteps(instruction, previousState, currentState, result) {
@@ -206,7 +265,11 @@
     if (step.kind === "write") {
       if (step.fromMemory !== undefined) mark(memoryCell(step.fromMemory), "state-read");
       mark(registerCell(step.register), "state-write");
-      showOperationBadge(`${formatMaybe(step.oldValue)} -> ${formatMaybe(step.newValue)}`);
+      if (step.pcChange) mark(document.getElementById("pcValue"), "state-pc");
+      showStateChangeCards([
+        stateChangeCard(`寄存器 ${step.register || "rd"}`, step.oldValue, step.newValue),
+        step.pcChange ? stateChangeCard("PC", step.pcChange.oldValue, step.pcChange.newValue) : null
+      ]);
     }
     if (step.kind === "memory-read") {
       mark(memoryCell(step.address), "state-read");
@@ -215,12 +278,25 @@
     if (step.kind === "memory-write") {
       mark(registerCell(step.fromRegister), "state-read");
       mark(memoryCell(step.address), "state-write");
-      showOperationBadge(`${formatMaybe(step.oldValue)} -> ${formatMaybe(step.newValue)}`);
+      if (step.pcChange) mark(document.getElementById("pcValue"), "state-pc");
+      showStateChangeCards([
+        stateChangeCard(`存储器[${step.address}]`, step.oldValue, step.newValue),
+        step.pcChange ? stateChangeCard("PC", step.pcChange.oldValue, step.pcChange.newValue) : null
+      ]);
     }
     if (step.kind === "pc") {
       mark(document.getElementById("pcValue"), "state-pc");
-      showOperationBadge(`${formatMaybe(step.oldValue)} -> ${formatMaybe(step.newValue)}`);
+      showStateChangeCards([stateChangeCard("PC", step.oldValue, step.newValue)]);
     }
+  }
+
+  function stateChangeCard(target, oldValue, newValue) {
+    if (!target) return null;
+    return {
+      target,
+      oldValue: formatMaybe(oldValue),
+      newValue: formatMaybe(newValue)
+    };
   }
 
   function mark(element, className) {
@@ -231,7 +307,7 @@
     document.querySelectorAll(".state-animating, .state-read, .state-write, .state-pc").forEach((element) => {
       element.classList.remove("state-animating", "state-read", "state-write", "state-pc");
     });
-    document.querySelectorAll(".state-fly-token, .state-operation-badge").forEach((element) => element.remove());
+    document.querySelectorAll(".state-fly-token, .state-operation-badge, .state-change-card-row").forEach((element) => element.remove());
   }
 
   function registerCell(name) {
@@ -244,11 +320,42 @@
   }
 
   function showOperationBadge(text) {
-    const host = document.querySelector(".assist-section.active") || document.body;
+    const dock = document.getElementById("stateAnimationDock");
+    const host = dock || document.querySelector(".assist-section.active") || document.body;
+    if (dock) {
+      dock.hidden = false;
+      document.body.classList.add("state-animation-active");
+    }
     const badge = document.createElement("div");
     badge.className = "state-operation-badge";
     badge.textContent = text;
     host.appendChild(badge);
+  }
+
+  function showStateChangeCards(changes) {
+    const activeChanges = changes.filter(Boolean);
+    if (!activeChanges.length) return;
+    const dock = document.getElementById("stateAnimationDock");
+    const host = dock || document.querySelector(".assist-section.active") || document.body;
+    if (dock) {
+      dock.hidden = false;
+      document.body.classList.add("state-animation-active");
+    }
+    const row = document.createElement("div");
+    row.className = activeChanges.length > 1 ? "state-change-card-row paired" : "state-change-card-row";
+    activeChanges.forEach((change) => {
+      const card = document.createElement("div");
+      card.className = "state-change-card";
+      const target = document.createElement("span");
+      target.className = "state-change-target";
+      target.textContent = change.target;
+      const values = document.createElement("strong");
+      values.className = "state-change-values";
+      values.textContent = `${change.oldValue} -> ${change.newValue}`;
+      card.append(target, values);
+      row.appendChild(card);
+    });
+    host.appendChild(row);
   }
 
   function showExpressionBadge(expression) {
@@ -280,7 +387,8 @@
   function hideExpressionDock() {
     const dock = document.getElementById("stateAnimationDock");
     document.body.classList.remove("state-animation-active");
-    document.querySelectorAll(".state-expression-badge").forEach((element) => element.remove());
+    document.body.classList.remove("state-animation-paused");
+    document.querySelectorAll(".state-expression-badge, .state-change-card-row").forEach((element) => element.remove());
     if (dock) {
       dock.hidden = true;
       dock.textContent = "";
@@ -459,6 +567,10 @@
 
   window.RiscVStateAnimation = {
     playStateAnimation,
-    clearStateAnimation
+    clearStateAnimation,
+    pauseStateAnimation,
+    resumeStateAnimation,
+    toggleStateAnimationPause,
+    isStateAnimationPaused
   };
 })();

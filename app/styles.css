@@ -16,7 +16,10 @@
   --red-soft: #fff0f0;
   --toolbox-width: 260px;
   --assistant-width: 400px;
+  --assistant-height: calc(100vh - 36px);
   --log-height: 190px;
+  --state-dock-x: 0px;
+  --state-dock-y: 0px;
   --canvas-scale: 1;
   font-family: "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
 }
@@ -70,7 +73,28 @@ button.primary:hover {
 }
 
 .app-shell {
-  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+main,
+#workspace.view.active {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+main {
+  display: flex;
+  flex-direction: column;
+}
+
+#workspace.view.active {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 .topbar {
@@ -135,6 +159,7 @@ h3 {
 .toolbar {
   display: flex;
   align-items: center;
+  flex: 0 0 auto;
   gap: 10px;
   flex-wrap: wrap;
   padding: 14px 24px;
@@ -348,7 +373,9 @@ body.oh-runtime .runtime-pill {
 
 .workspace-grid {
   position: relative;
-  min-height: calc(100vh - 154px);
+  flex: 1 1 auto;
+  height: 100%;
+  min-height: 0;
   margin: 0;
   padding: 0;
   overflow: hidden;
@@ -399,7 +426,7 @@ body.oh-runtime .resize-handle[data-resize="toolbox"]::after {
 .right-resize-handle {
   right: calc(16px + var(--assistant-width));
   top: 18px;
-  bottom: 18px;
+  height: min(var(--assistant-height), calc(100vh - 36px));
   display: none;
   z-index: 70;
   background: rgba(13, 110, 253, 0.22);
@@ -418,6 +445,34 @@ body.assist-panel-open .right-resize-handle::after {
   height: 46px;
   border-radius: 999px;
   background: rgba(13, 110, 253, 0.78);
+  transform: translate(-50%, -50%);
+}
+
+.assist-height-resize-handle {
+  right: 16px;
+  top: calc(18px + min(var(--assistant-height), calc(100vh - 36px)));
+  width: var(--assistant-width);
+  height: 10px;
+  min-height: 10px;
+  display: none;
+  cursor: row-resize;
+  z-index: 70;
+  background: rgba(13, 110, 253, 0.18);
+}
+
+body.assist-panel-open .assist-height-resize-handle {
+  display: block;
+}
+
+body.assist-panel-open .assist-height-resize-handle::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 54px;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(13, 110, 253, 0.72);
   transform: translate(-50%, -50%);
 }
 
@@ -1819,11 +1874,12 @@ body.harmony-workspace-mode[data-harmony-step="4"] .operand-chip {
   position: absolute;
   right: 16px;
   top: 18px;
-  bottom: 18px;
+  bottom: auto;
   z-index: 50;
   display: flex;
   flex-direction: column;
   width: var(--assistant-width);
+  height: min(var(--assistant-height), calc(100vh - 36px));
   padding: 12px;
   overflow: hidden;
   box-shadow: 0 18px 42px rgba(17, 24, 39, 0.18);
@@ -1874,17 +1930,25 @@ body.assist-panel-open .assist-panel {
 .assist-scroll {
   flex: 1 1 auto;
   min-height: 0;
-  overflow: auto;
-  padding-right: 2px;
+  height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  padding: 0 2px 72px 0;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
 }
 
 .assist-section {
   display: none;
   gap: 12px;
+  min-height: 0;
 }
 
 .assist-section.active {
   display: grid;
+  align-content: start;
 }
 
 .workspace-harmony-panel.collapsed {
@@ -1897,13 +1961,22 @@ body.assist-panel-open .assist-panel {
 
 .state-animation-dock {
   margin-bottom: 10px;
+  transform: translate(var(--state-dock-x), var(--state-dock-y));
+  cursor: grab;
+  touch-action: none;
+  transition: box-shadow 0.14s ease;
+}
+
+.state-animation-dock:not([hidden]):hover {
+  box-shadow: inset 0 0 0 1px rgba(13, 110, 253, 0.22);
+}
+
+.state-animation-dock.dragging {
+  cursor: grabbing;
+  z-index: 30;
 }
 
 .state-animation-dock[hidden] {
-  display: none;
-}
-
-body.state-animation-active .workspace-harmony-panel:not([hidden]) {
   display: none;
 }
 
@@ -1922,6 +1995,7 @@ body.state-animation-active .workspace-harmony-panel:not([hidden]) {
 .state-panel {
   grid-row: auto;
   grid-column: auto;
+  min-height: 0;
 }
 
 .pc-box {
@@ -1962,8 +2036,10 @@ body.state-animation-active .workspace-harmony-panel:not([hidden]) {
 
 .state-editor-row {
   display: grid;
-  grid-template-columns: 1fr 1fr minmax(70px, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr) minmax(42px, 0.62fr) minmax(0, 0.72fr) minmax(0, 0.72fr);
   gap: 6px;
+  align-items: stretch;
+  width: 100%;
 }
 
 .state-editor select,
@@ -1971,8 +2047,29 @@ body.state-animation-active .workspace-harmony-panel:not([hidden]) {
   min-width: 0;
   border: 1px solid var(--line);
   border-radius: 6px;
-  padding: 7px;
-  font-size: 12px;
+  padding: 6px 5px;
+  font-size: 11px;
+}
+
+.state-editor-row > select:first-child {
+  width: 100%;
+}
+
+.state-editor-row > select:nth-child(2) {
+  width: 100%;
+}
+
+.state-editor-row > input {
+  width: 100%;
+}
+
+.state-editor-row button {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 4px;
+  border-radius: 6px;
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .selected-state-detail {
@@ -2091,6 +2188,57 @@ body.state-animation-active .workspace-harmony-panel:not([hidden]) {
   font-weight: 900;
   box-shadow: 0 10px 24px rgba(17, 24, 39, 0.12);
   pointer-events: none;
+}
+
+.state-change-card-row {
+  position: sticky;
+  top: 0;
+  z-index: 16;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  width: min(100%, 520px);
+  margin: 0 auto 8px;
+  pointer-events: none;
+}
+
+.state-change-card-row.paired {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.state-change-card {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  border: 1px solid rgba(13, 110, 253, 0.28);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--ink);
+  padding: 10px 12px;
+  box-shadow: 0 12px 26px rgba(17, 24, 39, 0.14);
+  animation: state-expression-in 360ms ease-out both;
+}
+
+.state-change-target {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.state-change-values {
+  color: var(--primary-dark);
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 18px;
+  font-weight: 900;
+  line-height: 1.15;
+  word-break: break-word;
+}
+
+.state-animation-paused .state-change-card,
+.state-animation-paused .state-expression-badge,
+.state-animation-paused .state-operation-badge {
+  box-shadow: 0 0 0 2px rgba(173, 107, 0, 0.22), 0 12px 26px rgba(17, 24, 39, 0.14);
 }
 
 .state-expression-badge {
@@ -2244,22 +2392,22 @@ body.log-panel-open .bottom-resize-handle {
   position: absolute;
   left: calc(16px + var(--toolbox-width));
   right: 24px;
-  bottom: 0;
+  bottom: 4px;
   z-index: 52;
   display: grid;
   place-items: center;
-  width: 64px;
-  height: 22px;
+  width: 54px;
+  height: 18px;
   padding: 0;
-  border-radius: 8px 8px 0 0;
-  border: 1px solid var(--line);
-  border-bottom: 0;
-  background: rgba(255, 255, 255, 0.96);
+  border-radius: 999px;
+  border: 1px solid rgba(13, 110, 253, 0.24);
+  background: rgba(248, 251, 255, 0.72);
   color: var(--primary-dark);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 900;
-  box-shadow: 0 -6px 16px rgba(17, 24, 39, 0.1);
+  box-shadow: 0 4px 12px rgba(17, 24, 39, 0.08);
   margin: 0 auto;
+  backdrop-filter: blur(6px);
 }
 
 body.log-panel-open .log-drawer-toggle {

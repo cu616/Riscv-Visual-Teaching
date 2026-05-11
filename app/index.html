@@ -33,12 +33,13 @@
             <label class="speed-control" title="自动执行与状态动画速度">
               速度
               <select id="animationSpeedSelect">
-                <option value="0.5">0.5x</option>
                 <option value="1" selected>1x</option>
                 <option value="1.5">1.5x</option>
+                <option value="2">2x</option>
               </select>
             </label>
             <button id="clearProgramBtn" class="compact-command" title="清空程序">清空</button>
+            <button id="undoEditBtn" class="compact-command" title="撤销最近一次编辑操作">撤销</button>
             <button id="saveProgramBtn" class="compact-command" title="保存案例">保存</button>
             <label class="file-button compact-command" title="导入案例" aria-label="导入案例">
               导入
@@ -165,6 +166,7 @@
             </section>
 
             <div class="resize-handle right-resize-handle" data-resize="assistant" title="拖动调整右侧辅助栏宽度"></div>
+            <div class="resize-handle assist-height-resize-handle" data-resize="assistant-height" title="拖动调整右侧辅助栏高度"></div>
 
             <aside id="assistPanel" class="panel assist-panel pane" aria-label="右侧辅助栏">
               <div class="panel-heading assist-heading">
@@ -202,20 +204,20 @@
                 </div>
                 <div class="state-editor" aria-label="机器状态初始化">
                   <div class="state-editor-row">
-                    <select id="stateTargetType" title="选择要初始化寄存器还是内存">
+                    <select id="stateTargetType" title="选择要初始化寄存器还是存储器">
                       <option value="register">寄存器</option>
-                      <option value="memory">内存</option>
+                      <option value="memory">存储器</option>
                     </select>
-                    <select id="stateTargetName" title="选择目标寄存器或内存地址"></select>
+                    <select id="stateTargetName" title="选择目标寄存器或存储器地址"></select>
                     <input id="stateTargetValue" type="number" value="0" title="输入初始化数值" />
                     <button id="applyStateValueBtn" title="写入初始机器状态并重置执行">写入</button>
                     <button id="clearStateValueBtn" title="清除当前目标的初始值">清除</button>
                   </div>
-                  <div id="selectedStateDetail" class="selected-state-detail">点击寄存器或内存单元查看详情</div>
+                  <div id="selectedStateDetail" class="selected-state-detail">点击寄存器或存储器单元查看详情</div>
                 </div>
                 <h3>寄存器</h3>
                 <div id="registerGrid" class="register-grid"></div>
-                <h3>内存</h3>
+                <h3>存储器</h3>
                 <div id="memoryGrid" class="memory-grid"></div>
               </aside>
 
