@@ -17,7 +17,7 @@
         <nav class="tabs" aria-label="页面导航">
           <button class="tab active" data-view="workspace">工作台</button>
           <button class="tab" data-view="examples">示例案例</button>
-          <button class="tab" data-view="harmony">OpenHarmony 概念</button>
+          <button class="tab" data-view="harmony">O+R 实机路线</button>
         </nav>
       </header>
 
@@ -30,7 +30,7 @@
               <button id="pauseBtn" class="line-icon-btn" title="暂停" aria-label="暂停"><span class="line-icon icon-pause" aria-hidden="true"></span></button>
               <button id="resetBtn" class="line-icon-btn" title="重置"><span class="line-icon icon-reset" aria-hidden="true"></span></button>
             </div>
-            <button id="autoBtn" class="line-icon-btn" title="自动执行" aria-label="自动执行"><span class="line-icon icon-run" aria-hidden="true"></span></button>
+            <button id="autoBtn" class="auto-text-btn" title="自动执行" aria-label="自动执行">AUTO</button>
             <label class="speed-control" title="自动执行与状态动画速度">
               速度
               <select id="animationSpeedSelect">
@@ -46,7 +46,7 @@
               导入
               <input id="importProgramInput" type="file" accept=".json,.riscvteach.json,application/json" />
             </label>
-            <button id="harmonyWorkspaceToggleBtn" class="compact-command" title="在工作台中显示 OpenHarmony 硬件通信视角">展示</button>
+            <button id="harmonyWorkspaceToggleBtn" class="compact-command" title="在工作台中显示 OpenHarmony 接入路线视角">展示</button>
             <div class="execution-progress" aria-label="执行进度">
               <span id="executionProgressText">0 / 0</span>
               <span class="pc-inline">PC <strong id="pcValue">0</strong></span>
@@ -54,7 +54,11 @@
             </div>
             <span id="debugHint" class="debug-hint">上一步只回退执行状态</span>
             <span id="runState" class="status-pill">就绪</span>
-            <span id="runtimeState" class="status-pill runtime-pill">Web</span>
+            <button id="runtimeState" class="status-pill runtime-pill" type="button">Web</button>
+            <div id="runtimeDetailPopover" class="runtime-detail-popover" hidden>
+              <strong>运行与执行说明</strong>
+              <p id="runtimeDetailText">当前拼接指令由 RISC-V 教学模拟器执行，用于可视化解释指令语义；它不是直接改写 CPU 真实寄存器。</p>
+            </div>
           </section>
 
           <section class="workspace-grid">
@@ -63,7 +67,8 @@
                 <h2>指令积木</h2>
                 <span>自研积木</span>
               </div>
-              <div class="block-palette" aria-label="指令积木分类">
+              <div class="toolbox-instruction-browser">
+              <div id="blockPalette" class="block-palette" aria-label="指令积木分类">
                 <div class="block-group">
                   <span>算术</span>
                   <div class="block-grid">
@@ -121,6 +126,12 @@
                     <button class="block-chip jump" draggable="true" data-opcode="j">j</button>
                   </div>
                 </div>
+                <div class="block-group macro-block-group">
+                  <span>复合</span>
+                  <div class="block-grid macro-grid" id="macroPalette"></div>
+                </div>
+              </div>
+              <div id="blockCategoryDetail" class="block-category-detail arithmetic" aria-label="分类指令详情"></div>
               </div>
               <h3>小积木素材</h3>
               <label class="custom-imm-control">
@@ -159,7 +170,7 @@
                 </div>
                 <div id="instructionList" class="instruction-list">
                   <div class="softbus-canvas-anchor" aria-hidden="true">
-                    <span>香橙派 / 软总线</span>
+                    <span>香橙派 / 后续接入</span>
                     <i></i>
                   </div>
                 </div>
@@ -220,6 +231,8 @@
                 <div id="registerGrid" class="register-grid"></div>
                 <h3>存储器</h3>
                 <div id="memoryGrid" class="memory-grid"></div>
+                <h3>GPIO 模拟外设</h3>
+                <div id="gpioPanel" class="gpio-panel" aria-label="GPIO 模拟外设状态"></div>
               </aside>
 
                 </section>
@@ -284,18 +297,18 @@
           <div class="page-panel harmony-page">
             <div class="harmony-hero">
               <div>
-                <p class="section-kicker">OpenHarmony 硬件积木固化视图</p>
-                <h2>把工作台里的软件积木，映射成原本硬件积木的通信状态</h2>
+                <p class="section-kicker">OpenHarmony / RISC-V 实机与接入路线</p>
+                <h2>把当前可运行样机，说明为后续智能积木系统的软件底座</h2>
                 <p>
-                  本页不再空泛展示概念，而是读取“工作台”中当前指令积木和下方操作数积木的连接结果。
-                  虚线表示指令块识别到寄存器、立即数、标签等子积木的连接状态；星闪链路表示每个指令硬件积木与香橙派软总线相连。
+                  本页展示三类状态：已完成的 OpenHarmony + 香橙派 RV2 实机运行，当前软件对 RISC-V 指令拼接与执行过程的模拟，
+                  以及后续摄像头识别、智能积木节点和软总线接入路线。当前版本不宣称已经完成真实软总线设备通信。
                 </p>
               </div>
-              <div class="harmony-summary" aria-label="固化流程">
-                <span>工作台状态读取</span>
-                <span>连接状态识别</span>
-                <span>星闪通信入网</span>
-                <span>软总线固化展示</span>
+              <div class="harmony-summary" aria-label="接入路线">
+                <span>已完成：OH 实机运行</span>
+                <span>已完成：教学模拟器</span>
+                <span>下一阶段：视觉识别</span>
+                <span>设计态：软总线设备</span>
               </div>
             </div>
 
@@ -313,32 +326,45 @@
                   <button id="harmonyNextStepBtn" class="primary">推进一步</button>
                   <button id="harmonyResetStepBtn">重置流程</button>
                 </div>
+                <div class="harmony-zoom-controls" aria-label="O+R 页面比例">
+                  <button id="harmonyZoomOutBtn" title="缩小 O+R 路线图">-</button>
+                  <span id="harmonyZoomReadout">100%</span>
+                  <button id="harmonyZoomInBtn" title="放大 O+R 路线图">+</button>
+                  <button id="harmonyZoomResetBtn" title="恢复 O+R 路线图比例">重置</button>
+                </div>
                 <ol id="harmonyFlowList" class="harmony-flow-list"></ol>
                 <ul id="harmonyCapabilityList" class="capability-list"></ul>
               </aside>
 
-              <section class="harmony-panel harmony-stage" aria-label="软件积木到硬件积木通信映射图">
+              <section class="harmony-panel harmony-stage" aria-label="软件积木到硬件积木接入路线图">
                 <div class="softbus-card">
                   <div class="softbus-title">
-                    <span>香橙派 / OpenHarmony 软总线</span>
-                    <strong>近场协调中心</strong>
+                    <span>香橙派 RV2 / OpenHarmony 主控</span>
+                    <strong>当前已运行</strong>
                   </div>
-                  <p>BusCenter 维护逻辑网络，Discovery 发现指令积木，Connection 选择星闪链路，Trans 固化当前程序状态。</p>
-                  <div class="softbus-pipeline" aria-label="软总线工作流程">
-                    <div class="pipeline-step active" data-step="0">读取工作台</div>
-                    <div class="pipeline-step" data-step="1">识别连接</div>
-                    <div class="pipeline-step" data-step="2">星闪入网</div>
-                    <div class="pipeline-step" data-step="3">状态传输</div>
-                    <div class="pipeline-step" data-step="4">固化展示</div>
+                  <p>当前负责承载 ArkWeb 本地教学应用；软总线发现、传输和对端外设控制属于后续智能积木接入设计。</p>
+                  <div class="softbus-pipeline" aria-label="接入路线流程">
+                    <div class="pipeline-step active" data-step="0">OH 应用启动</div>
+                    <div class="pipeline-step" data-step="1">教学模拟执行</div>
+                    <div class="pipeline-step" data-step="2">视觉识别</div>
+                    <div class="pipeline-step" data-step="3">智能积木</div>
+                    <div class="pipeline-step" data-step="4">软总线设备</div>
                   </div>
+                </div>
+                <div class="route-led-module" aria-label="外部 LED 模块示意">
+                  <span class="route-led route-led-run"></span>
+                  <span class="route-led route-led-x1"></span>
+                  <span class="route-led route-led-error"></span>
+                  <strong>外部 LED 模块</strong>
+                  <em>主控外设：运行 / x1 / 异常</em>
                 </div>
                 <div id="atomCanvas" class="hardware-block-canvas" aria-live="polite"></div>
               </section>
             </div>
 
             <div class="concept-list harmony-note">
-              <p><strong>对应关系：</strong>工作台中的一条指令大积木对应一个硬件指令积木；它下方的寄存器、立即数、标签等小积木对应硬件子积木；虚线表示本地连接状态识别，星闪图标表示指令积木与香橙派之间的近场通信链路。</p>
-              <p><strong>项目取舍：</strong>这是早期硬件积木方案的软件化表达。真实硬件版需要每个积木上报连接关系；当前软件版直接读取工作台数据，以便在答辩中说明“硬件设想如何被软件模拟替代”。</p>
+              <p><strong>对应关系：</strong>工作台中的一条指令大积木对应未来一个硬件指令积木；它下方的寄存器、立即数、标签等小积木对应未来硬件子积木或视觉识别结果。当前软件读取的是工作台数据，用于证明“积木语义到 RISC-V 指令执行”的核心链路。</p>
+              <p><strong>项目边界：</strong>当前已完成 OpenHarmony 实机运行和 RISC-V 教学模拟执行；真实积木识别、软总线发现、远端 LED/语音/屏幕反馈属于后续硬件化路线，不在本次决赛样机中夸大为已完成能力。</p>
             </div>
           </div>
         </section>

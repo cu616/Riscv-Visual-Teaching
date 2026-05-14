@@ -1,12 +1,19 @@
 (function () {
   const {
     REGISTERS,
+    REGISTER_ALIASES,
+    TEMP_REGISTERS,
     FIELD_KINDS,
     INSTRUCTION_DEFS,
+    MACRO_DEFS,
     EXAMPLES,
     createDefaultInstruction,
+    expandMacroInstruction,
     parseProgram,
-    formatAssembly
+    formatAssembly,
+    macroInstructionSummary,
+    explainInstruction,
+    sortRawInstructions
   } = window.RiscVTeaching;
   const { createInitialState, executeInstruction } = window.RiscVSimulator;
   const datapath = window.RiscVDatapath;
@@ -19,7 +26,10 @@
   const dom = {
     tabs: document.querySelectorAll(".tab"),
     views: document.querySelectorAll(".view"),
+    blockPalette: document.getElementById("blockPalette"),
+    blockCategoryDetail: document.getElementById("blockCategoryDetail"),
     instructionList: document.getElementById("instructionList"),
+    macroPalette: document.getElementById("macroPalette"),
     assemblyPreview: document.getElementById("assemblyPreview"),
     clearProgramBtn: document.getElementById("clearProgramBtn"),
     undoEditBtn: document.getElementById("undoEditBtn"),
@@ -70,6 +80,7 @@
     pcValue: document.getElementById("pcValue"),
     registerGrid: document.getElementById("registerGrid"),
     memoryGrid: document.getElementById("memoryGrid"),
+    gpioPanel: document.getElementById("gpioPanel"),
     executionLog: document.getElementById("executionLog"),
     errorBox: document.getElementById("errorBox"),
     exampleList: document.getElementById("exampleList"),
@@ -84,8 +95,14 @@
     harmonyGoWorkspaceBtn: document.getElementById("harmonyGoWorkspaceBtn"),
     harmonyNextStepBtn: document.getElementById("harmonyNextStepBtn"),
     harmonyResetStepBtn: document.getElementById("harmonyResetStepBtn"),
+    harmonyZoomOutBtn: document.getElementById("harmonyZoomOutBtn"),
+    harmonyZoomInBtn: document.getElementById("harmonyZoomInBtn"),
+    harmonyZoomResetBtn: document.getElementById("harmonyZoomResetBtn"),
+    harmonyZoomReadout: document.getElementById("harmonyZoomReadout"),
     harmonyPipelineSteps: document.querySelectorAll(".pipeline-step"),
     runtimeState: document.getElementById("runtimeState"),
+    runtimeDetailPopover: document.getElementById("runtimeDetailPopover"),
+    runtimeDetailText: document.getElementById("runtimeDetailText"),
     visualNodes: [
       "pcNode",
       "instructionNode",
@@ -141,6 +158,7 @@
     harmonyWorkspaceMode: false,
     harmonyWorkspaceCollapsed: false,
     harmonyStep: 0,
+    harmonyScale: 0.9,
     stateDockOffset: { x: 0, y: 0 }
   };
   const runtime = createRuntimeInfo();
@@ -168,6 +186,7 @@
     renderHarmony();
     renderAll();
     setCanvasScale(app.canvasScale);
+    setHarmonyScale(app.harmonyScale);
     setAssistTab("machine");
     toggleAssistPanel(runtime.isOpenHarmony);
     toggleLogPanel(false);
@@ -194,19 +213,50 @@
   }
 
   function updateRuntimeState() {
-    if (!dom.runtimeState) return;
-    const viewport = `${window.innerWidth}x${window.innerHeight}`;
-    const label = runtime.isOpenHarmony
-      ? "OH 1080p"
-      : "Web";
-    dom.runtimeState.textContent = label;
-    dom.runtimeState.title = runtime.note
-      ? `${runtime.platform} ${runtime.shell}；目标：${runtime.targetDisplay || "1080p"}；当前视口：${viewport}。${runtime.note}`
-      : `${runtime.platform} ${runtime.shell}；当前视口：${viewport}`;
+    updateRuntimeProof();
+  }
+
+  function updateRuntimeProof() {
+    const platformText = runtime.isOpenHarmony
+      ? `${runtime.platform} / ${runtime.shell} / 香橙派 RV2`
+      : `${runtime.platform} / ${runtime.shell} / Windows 或浏览器`;
+    const x1 = Number(app.state?.registers?.x1 || 0);
+    if (dom.runtimeState) {
+      dom.runtimeState.textContent = `${runtime.isOpenHarmony ? "OH · RV2" : "Web"} · 模拟执行`;
+      dom.runtimeState.classList.remove("led-on", "led-off");
+      const detail = [
+        `运行平台：${platformText}`,
+        "执行模式：RISC-V 教学模拟器，用于解释指令语义，不直接改写 CPU 真实寄存器。",
+        `外设反馈映射：虚拟 LED 由 x1=${x1} 映射，x1 非 0 时点亮。`,
+        "GPIO 区展示的是模拟硬件反馈，后续可把同一状态映射到 GPIO 或软总线对端 LED 设备。"
+      ].join("\n");
+      dom.runtimeState.title = detail;
+      if (dom.runtimeDetailText) dom.runtimeDetailText.textContent = detail;
+    }
   }
 
   function renderRegisterSelector() {
-    dom.customRegisterInput.innerHTML = REGISTERS.map((reg) => `<option value="${reg}" ${reg === "x1" ? "selected" : ""}>${reg}</option>`).join("");
+    dom.customRegisterInput.innerHTML = REGISTERS.map((reg) => `<option value="${reg}" ${reg === "x1" ? "selected" : ""}>${registerOptionLabel(reg)}</option>`).join("");
+  }
+
+  function registerAlias(name) {
+    return REGISTER_ALIASES[name] || "";
+  }
+
+  function isTempRegister(name) {
+    return TEMP_REGISTERS.includes(name);
+  }
+
+  function registerOptionLabel(name) {
+    const alias = registerAlias(name);
+    const suffix = isTempRegister(name) ? " temp" : "";
+    return alias ? `${name} / ${alias}${suffix}` : `${name}${suffix}`;
+  }
+
+  function registerTitle(name) {
+    const alias = registerAlias(name);
+    const role = isTempRegister(name) ? "macro temporary register" : "register";
+    return alias ? `${name} / ${alias} - ${role}` : `${name} - ${role}`;
   }
 
   function bindEvents() {
@@ -243,6 +293,14 @@
     dom.importProgramInput.addEventListener("change", (event) => importProgramFile(event.target.files?.[0] || null));
     dom.harmonyWorkspaceToggleBtn.addEventListener("click", toggleHarmonyWorkspaceMode);
     dom.harmonyWorkspaceCollapseBtn.addEventListener("click", toggleWorkspaceHarmonyPanel);
+    dom.runtimeState?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      toggleRuntimeDetail();
+    });
+    document.addEventListener("click", (event) => {
+      if (event.target.closest("#runtimeState, #runtimeDetailPopover")) return;
+      toggleRuntimeDetail(false);
+    });
     dom.stateTargetType.addEventListener("change", renderStateTargetSelector);
     dom.applyStateValueBtn.addEventListener("click", applyInitialStateValue);
     dom.clearStateValueBtn.addEventListener("click", clearInitialStateValue);
@@ -256,36 +314,15 @@
     dom.harmonyResetStepBtn.addEventListener("click", () => {
       setHarmonyStep(0);
     });
+    dom.harmonyZoomOutBtn?.addEventListener("click", () => adjustHarmonyScale(-0.1));
+    dom.harmonyZoomInBtn?.addEventListener("click", () => adjustHarmonyScale(0.1));
+    dom.harmonyZoomResetBtn?.addEventListener("click", () => setHarmonyScale(1));
     dom.baseButtons.forEach((button) => {
       button.addEventListener("click", () => setDisplayBase(button.dataset.base));
     });
-    document.querySelectorAll(".block-chip").forEach((chip) => {
-      chip.addEventListener("click", () => {
-        if (Date.now() < suppressClickUntil) return;
-        addInstruction(chip.dataset.opcode);
-        renderError("");
-      });
-      if (runtime.isOpenHarmony) {
-        chip.removeAttribute("draggable");
-        chip.addEventListener("touchstart", (event) => {
-          beginOhTouchDrag(event, { type: "instruction", opcode: chip.dataset.opcode }, chip.textContent);
-        }, { passive: true });
-        chip.addEventListener("mousedown", (event) => {
-          beginOhMouseDrag(event, { type: "instruction", opcode: chip.dataset.opcode }, chip.textContent);
-        });
-        return;
-      }
-      chip.addEventListener("dragstart", (event) => {
-        event.dataTransfer.setData("application/json", JSON.stringify({ kind: "instruction", opcode: chip.dataset.opcode }));
-        event.dataTransfer.effectAllowed = "copy";
-        showProgramDropHint();
-        document.body.classList.add("dragging-instruction");
-      });
-      chip.addEventListener("dragend", () => {
-        hideProgramDropHint();
-        document.body.classList.remove("dragging-instruction");
-      });
-    });
+    renderMacroPalette();
+    document.querySelectorAll(".block-chip").forEach(bindPaletteChip);
+    initBlockCategoryBrowser();
 
     dom.programDropZone.addEventListener("dragover", (event) => {
       event.preventDefault();
@@ -305,6 +342,12 @@
           x: Math.max(24, point.x - 140),
           y: Math.max(96, point.y)
         });
+      } else if (payload && payload.kind === "macro") {
+        const point = canvasPointFromClient(event.clientX, event.clientY);
+        addInstruction(payload.macro, {
+          x: Math.max(24, point.x - 140),
+          y: Math.max(96, point.y)
+        });
       } else if (payload && operandModel.isOperandKind(payload.kind)) {
         addLooseOperand(payload, event);
       }
@@ -312,7 +355,7 @@
 
     dom.programCanvas.addEventListener("dragover", (event) => {
       event.preventDefault();
-      if (ui.readDragPayload(event)?.kind === "instruction") showProgramDropHint();
+      if (["instruction", "macro"].includes(ui.readDragPayload(event)?.kind)) showProgramDropHint();
       autoScrollCanvas(event.clientY);
     });
     dom.programCanvas.addEventListener("drop", (event) => {
@@ -323,6 +366,12 @@
       if (payload && payload.kind === "instruction") {
         const point = canvasPointFromClient(event.clientX, event.clientY);
         addInstruction(payload.opcode, {
+          x: Math.max(24, point.x - 140),
+          y: Math.max(96, point.y)
+        });
+      } else if (payload && payload.kind === "macro") {
+        const point = canvasPointFromClient(event.clientX, event.clientY);
+        addInstruction(payload.macro, {
           x: Math.max(24, point.x - 140),
           y: Math.max(96, point.y)
         });
@@ -434,8 +483,14 @@
   }
 
   function switchView(viewId) {
+    toggleRuntimeDetail(false);
     dom.tabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.view === viewId));
     dom.views.forEach((view) => view.classList.toggle("active", view.id === viewId));
+    if (viewId !== "harmony") {
+      document.documentElement.style.setProperty("--harmony-render-scale", "1");
+    } else {
+      setHarmonyScale(app.harmonyScale);
+    }
   }
 
   function setCanvasScale(scale) {
@@ -460,6 +515,25 @@
     app.assistOpen = typeof forced === "boolean" ? forced : !app.assistOpen;
     document.body.classList.toggle("assist-panel-open", app.assistOpen);
     dom.assistPanelBtn.classList.toggle("primary", app.assistOpen);
+  }
+
+  function toggleRuntimeDetail(forced) {
+    if (!dom.runtimeDetailPopover) return;
+    const nextHidden = typeof forced === "boolean" ? !forced : !dom.runtimeDetailPopover.hidden;
+    dom.runtimeDetailPopover.hidden = nextHidden;
+  }
+
+  function adjustHarmonyScale(delta) {
+    setHarmonyScale(ui.clamp(app.harmonyScale + delta, 0.5, 1.35));
+  }
+
+  function setHarmonyScale(scale) {
+    app.harmonyScale = Math.round(scale * 10) / 10;
+    document.documentElement.style.setProperty("--harmony-scale", app.harmonyScale);
+    document.documentElement.style.setProperty("--harmony-render-scale", app.harmonyScale);
+    if (dom.harmonyZoomReadout) {
+      dom.harmonyZoomReadout.textContent = `${Math.round(app.harmonyScale * 100)}%`;
+    }
   }
 
   function handlePreviousCommand() {
@@ -559,7 +633,7 @@
   }
 
   function orderedInstructions() {
-    return [...app.rawInstructions].sort((a, b) => (a.y ?? 0) - (b.y ?? 0) || (a.x ?? 0) - (b.x ?? 0));
+    return sortRawInstructions(app.rawInstructions);
   }
 
   function createEditSnapshot(label = "") {
@@ -645,7 +719,7 @@
 
   function maxInstructionX() {
     const canvas = dom.programCanvas.getBoundingClientRect();
-    return Math.max(minBlockX(), canvas.width / app.canvasScale - 330);
+    return Math.max(minBlockX(), canvas.width / app.canvasScale - 430);
   }
 
   function maxLooseOperandX() {
@@ -669,7 +743,8 @@
     if (options.saveUndo !== false) pushEditHistory("edit instruction");
     app.rawInstructions = app.rawInstructions.map((instruction) => {
       if (instruction.id !== id) return instruction;
-      const updated = { ...instruction, [field]: FIELD_KINDS[field] === "immediate" ? Number(value) : value };
+      const nextValue = value === "" ? "" : FIELD_KINDS[field] === "immediate" ? Number(value) : value;
+      const updated = { ...instruction, [field]: nextValue };
       if (field === "opcode") {
         return { ...createDefaultInstruction(value, { x: instruction.x, y: instruction.y }), id };
       }
@@ -765,6 +840,253 @@
     }
   }
 
+  function renderMacroPalette() {
+    if (!dom.macroPalette) return;
+    dom.macroPalette.innerHTML = MACRO_DEFS.map((macro) => `
+      <button
+        class="block-chip macro-chip ${macro.color}"
+        draggable="true"
+        data-macro="${escapeHtml(macro.opcode)}"
+        title="点击预览说明；拖入编辑区后作为复合指令积木执行"
+      >
+        <strong>${escapeHtml(macro.shortLabel || macro.opcode)}</strong>
+      </button>
+    `).join("");
+  }
+
+  function bindPaletteChip(chip) {
+    if (!chip || chip.dataset.bound === "true") return;
+    chip.dataset.bound = "true";
+    chip.addEventListener("click", (event) => {
+      if (Date.now() < suppressClickUntil) return;
+      event.preventDefault();
+      previewPaletteInstruction(chip);
+    });
+    chip.addEventListener("dblclick", (event) => {
+      if (!chip.dataset.macro) return;
+      event.preventDefault();
+      showMacroDetail(chip.dataset.macro);
+    });
+    chip.addEventListener("contextmenu", (event) => {
+      if (!chip.dataset.macro) return;
+      event.preventDefault();
+      showMacroDetail(chip.dataset.macro);
+    });
+    if (runtime.isOpenHarmony) {
+      chip.removeAttribute("draggable");
+      chip.addEventListener("touchstart", (event) => {
+        beginOhTouchDrag(event, chip.dataset.macro
+          ? { type: "macro", macro: chip.dataset.macro }
+          : { type: "instruction", opcode: chip.dataset.opcode }, chip.textContent);
+      }, { passive: true });
+      chip.addEventListener("mousedown", (event) => {
+        beginOhMouseDrag(event, chip.dataset.macro
+          ? { type: "macro", macro: chip.dataset.macro }
+          : { type: "instruction", opcode: chip.dataset.opcode }, chip.textContent);
+      });
+      return;
+    }
+    chip.addEventListener("dragstart", (event) => {
+      const payload = chip.dataset.macro
+        ? { kind: "macro", macro: chip.dataset.macro }
+        : { kind: "instruction", opcode: chip.dataset.opcode };
+      event.dataTransfer.setData("application/json", JSON.stringify(payload));
+      event.dataTransfer.effectAllowed = "copy";
+      showProgramDropHint();
+      document.body.classList.add("dragging-instruction");
+    });
+    chip.addEventListener("dragend", () => {
+      hideProgramDropHint();
+      document.body.classList.remove("dragging-instruction");
+    });
+  }
+
+  function initBlockCategoryBrowser() {
+    if (!dom.blockPalette || !dom.blockCategoryDetail) return;
+    const groups = [...dom.blockPalette.querySelectorAll(".block-group")];
+    groups.forEach((group, index) => {
+      const firstChip = group.querySelector(".block-chip");
+      const title = group.querySelector(":scope > span")?.textContent?.trim() || "指令";
+      group.dataset.categoryColor = firstChip ? [...firstChip.classList].find((name) => name !== "block-chip" && name !== "macro-chip") || "arithmetic" : "arithmetic";
+      group.classList.add(`${group.dataset.categoryColor}-category-card`);
+      group.setAttribute("role", "button");
+      group.setAttribute("tabindex", "0");
+      group.addEventListener("click", (event) => {
+        if (event.target.closest(".block-chip")) return;
+        showBlockCategory(group);
+      });
+      group.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        showBlockCategory(group);
+      });
+      if (index === 0) {
+        window.setTimeout(() => showBlockCategory(group), 0);
+      }
+      group.title = `查看${title}类指令`;
+    });
+  }
+
+  function showBlockCategory(group) {
+    if (!dom.blockCategoryDetail) return;
+    dom.blockPalette.querySelectorAll(".block-group").forEach((item) => item.classList.toggle("active", item === group));
+    const title = group.querySelector(":scope > span")?.textContent?.trim() || "指令";
+    const color = group.dataset.categoryColor || "arithmetic";
+    const chips = [...group.querySelectorAll(".block-chip")];
+    dom.blockCategoryDetail.className = `block-category-detail ${color}`;
+    dom.blockCategoryDetail.innerHTML = `
+      <div class="category-detail-title">${escapeHtml(title)}</div>
+      <div class="category-detail-grid"></div>
+    `;
+    const grid = dom.blockCategoryDetail.querySelector(".category-detail-grid");
+    chips.forEach((chip) => {
+      const clone = chip.cloneNode(true);
+      clone.dataset.bound = "false";
+      bindPaletteChip(clone);
+      grid.appendChild(clone);
+    });
+  }
+
+  function showMacroDetail(macroId) {
+    const macro = MACRO_DEFS.find((item) => item.opcode === macroId);
+    if (!macro) return;
+    const raw = createDefaultInstruction(macro.opcode);
+    const steps = macroInstructionSummary(raw).map((step) => `
+      <li>
+        <code>${escapeHtml(step.assembly)}</code>
+        <span>${escapeHtml(step.text)}</span>
+      </li>
+    `).join("");
+    const existing = document.querySelector(".macro-detail-popover");
+    if (existing) existing.remove();
+    const popover = document.createElement("div");
+    popover.className = "macro-detail-popover";
+    popover.setAttribute("role", "dialog");
+    popover.setAttribute("aria-modal", "true");
+    popover.innerHTML = `
+      <div class="macro-detail-card">
+        <div class="macro-detail-head">
+          <div>
+            <span>复合指令</span>
+            <h3>${escapeHtml(macro.title)}</h3>
+          </div>
+          <button class="tool-btn macro-detail-close" title="关闭">×</button>
+        </div>
+        <p>${escapeHtml(macro.description)}</p>
+        <ol>${steps}</ol>
+        <div class="macro-detail-actions">
+          <button class="secondary macro-insert-btn">放入编辑区</button>
+        </div>
+      </div>
+    `;
+    const close = () => popover.remove();
+    popover.addEventListener("click", (event) => {
+      if (event.target === popover) close();
+    });
+    popover.querySelector(".macro-detail-close").addEventListener("click", close);
+    popover.querySelector(".macro-insert-btn").addEventListener("click", () => {
+      addInstruction(macro.opcode);
+      close();
+    });
+    document.body.appendChild(popover);
+  }
+
+  function showMacroBlockDetail(instruction) {
+    const macro = MACRO_DEFS.find((item) => item.opcode === instruction.opcode);
+    if (!macro) return;
+    const steps = macroInstructionSummary(instruction).map((step) => `
+      <li>
+        <code>${escapeHtml(step.assembly)}</code>
+        <span>${escapeHtml(step.text)}</span>
+      </li>
+    `).join("");
+    const existing = document.querySelector(".macro-detail-popover");
+    if (existing) existing.remove();
+    const popover = document.createElement("div");
+    popover.className = "macro-detail-popover";
+    popover.setAttribute("role", "dialog");
+    popover.setAttribute("aria-modal", "true");
+    popover.innerHTML = `
+      <div class="macro-detail-card">
+        <div class="macro-detail-head">
+          <div>
+            <span>复合指令实例</span>
+            <h3>${escapeHtml(formatAssembly(instruction))}</h3>
+          </div>
+          <button class="tool-btn macro-detail-close" title="关闭">×</button>
+        </div>
+        <p>${escapeHtml(explainInstruction(instruction))}</p>
+        <ol>${steps}</ol>
+        <div class="macro-detail-actions">
+          <button class="secondary macro-expand-real-btn">展开为基础指令</button>
+        </div>
+      </div>
+    `;
+    const close = () => popover.remove();
+    popover.addEventListener("click", (event) => {
+      if (event.target === popover) close();
+    });
+    popover.querySelector(".macro-detail-close").addEventListener("click", close);
+    popover.querySelector(".macro-expand-real-btn").addEventListener("click", () => {
+      expandMacroBlock(instruction.id);
+      close();
+    });
+    document.body.appendChild(popover);
+  }
+
+  function expandMacroBlock(id) {
+    const target = app.rawInstructions.find((instruction) => instruction.id === id);
+    if (!target) return;
+    const groupId = crypto.randomUUID ? crypto.randomUUID() : `${target.id}-group-${Date.now()}`;
+    const macroShortTag = nextMacroShortTag();
+    const expandedSource = expandMacroInstruction({ ...target, macroShortTag });
+    const expanded = expandedSource.map((instruction, index) => ({
+      ...instruction,
+      id: crypto.randomUUID ? crypto.randomUUID() : `${target.id}-expanded-${index}`,
+      macroGroupId: groupId,
+      macroGroupOrder: index,
+      macroGroupSize: expandedSource.length,
+      x: target.x,
+      y: (target.y ?? 96) + index * 86
+    }));
+    pushEditHistory("expand macro instruction");
+    const expandedIds = expanded.map((instruction) => instruction.id);
+    app.rawInstructions = app.rawInstructions.flatMap((instruction) => (
+      instruction.id === id ? expanded : [instruction]
+    ));
+    app.selectedInstructionIds = expandedIds;
+    app.selectedLooseOperandIds = [];
+    resetMachine(false);
+    renderAll();
+  }
+
+  function nextMacroShortTag() {
+    const used = new Set();
+    app.rawInstructions.forEach((instruction) => {
+      if (instruction.labelTag) used.add(String(instruction.labelTag).slice(0, 3));
+      if (instruction.label) used.add(String(instruction.label).slice(0, 3));
+    });
+    for (let index = 0; index < 1296; index += 1) {
+      const tag = `m${index.toString(36)}`;
+      if (!used.has(tag)) return tag;
+    }
+    return "mx";
+  }
+
+  function previewPaletteInstruction(chip) {
+    const opcode = chip.dataset.macro || chip.dataset.opcode;
+    if (!opcode) return;
+    const raw = createDefaultInstruction(opcode);
+    const def = INSTRUCTION_DEFS[opcode];
+    const baseText = `${formatAssembly(raw)}：${explainInstruction(raw)}`;
+    if (def?.macro) {
+      const steps = macroInstructionSummary(raw).map((step) => `${step.index}. ${step.assembly} => ${step.text}`).join("\n");
+      renderError(`${baseText}\n内部展开预览：\n${steps}`);
+      return;
+    }
+    renderError(baseText);
+  }
+
   function renderAll() {
     enforceWorkspaceBounds();
     const parsed = parseProgram(app.rawInstructions);
@@ -779,6 +1101,7 @@
     renderPendingOperandState();
     updateExecutionProgress();
     updateRunState();
+    updateRuntimeProof();
     renderHarmony();
   }
 
@@ -837,7 +1160,8 @@
   }
 
   function renderInstructions(errors) {
-    dom.instructionList.querySelectorAll(".instruction-card, .floating-operand-chip, .empty-workspace-hint").forEach((node) => node.remove());
+    dom.instructionList.querySelectorAll(".instruction-card, .floating-operand-chip, .empty-workspace-hint, .macro-group-frame").forEach((node) => node.remove());
+    const errorByIndex = errorsByInstructionIndex(errors);
     if (app.rawInstructions.length === 0) {
       const hint = document.createElement("p");
       hint.className = "hint empty-workspace-hint";
@@ -848,7 +1172,7 @@
     orderedInstructions().forEach((instruction, index) => {
       const def = INSTRUCTION_DEFS[instruction.opcode] || INSTRUCTION_DEFS.addi;
       const card = document.createElement("article");
-      card.className = `instruction-card ${def.color}-block`;
+      card.className = `instruction-card ${def.color}-block ${def.macro ? "macro-instruction-card" : ""}`;
       card.style.position = "absolute";
       const x = instruction.x ?? 36;
       const y = instruction.y ?? 96;
@@ -865,17 +1189,20 @@
       if (app.selectedInstructionIds.includes(instruction.id)) {
         card.classList.add("selected");
       }
-      if (errors.length) card.classList.add("error");
+      const instructionError = errorByIndex.get(index);
+      if (instructionError) card.classList.add("error");
       card.innerHTML = `
         ${renderLabelDock(instruction)}
         <div class="instruction-block-head" title="${def.label}：${def.help}">
           <span class="instruction-index">${index}</span>
           <div class="opcode-label">${instruction.opcode.toUpperCase()}</div>
+          ${def.macro ? `<button class="macro-expand-btn" title="查看并展开为基础指令">展开</button>` : ""}
           <button class="delete-btn" title="删除指令">×</button>
         </div>
-        <span class="workspace-starlight-label">星闪连接技术</span>
+        <span class="workspace-starlight-label">后续通信接入</span>
         <div class="operand-rail">${renderSlots(instruction, def)}</div>
         ${renderInstructionWarning(instruction)}
+        ${renderInstructionError(instructionError)}
       `;
       if (runtime.isOpenHarmony) {
         card.addEventListener("touchstart", (event) => {
@@ -891,10 +1218,24 @@
       }
       bindSlots(card, instruction, def);
       bindLabelDock(card, instruction);
+      card.querySelector(".macro-expand-btn")?.addEventListener("click", (event) => {
+        event.stopPropagation();
+        showMacroBlockDetail(instruction);
+      });
       card.querySelector(".delete-btn").addEventListener("click", () => deleteInstruction(instruction.id));
+      card.addEventListener("dblclick", (event) => {
+        if (!def.macro || event.target.closest(".slot, .label-dock, button, input, .operand-chip")) return;
+        showMacroBlockDetail(instruction);
+      });
+      card.addEventListener("contextmenu", (event) => {
+        if (!def.macro) return;
+        event.preventDefault();
+        showMacroBlockDetail(instruction);
+      });
       card.addEventListener("click", (event) => {
         if (Date.now() < suppressClickUntil) return;
         if (event.target.closest(".slot, .label-dock, button, input, .operand-chip")) return;
+        renderError(`${formatAssembly(instruction)}：${explainInstruction(instruction)}`);
         if (event.ctrlKey) {
           toggleInstructionSelection(instruction.id, true);
         } else if (!card.classList.contains("dragging")) {
@@ -903,13 +1244,38 @@
       });
       dom.instructionList.appendChild(card);
     });
+    renderMacroGroupFrames();
     renderLooseOperands();
     updateCanvasExtent();
   }
 
+  function renderMacroGroupFrames() {
+    const groups = new Map();
+    app.rawInstructions.forEach((instruction) => {
+      if (!instruction.macroGroupId) return;
+      if (!groups.has(instruction.macroGroupId)) groups.set(instruction.macroGroupId, []);
+      groups.get(instruction.macroGroupId).push(instruction);
+    });
+    groups.forEach((items) => {
+      if (items.length < 2) return;
+      const left = Math.min(...items.map((item) => item.x ?? defaultInstructionX()));
+      const top = Math.min(...items.map((item) => item.y ?? 96));
+      const right = Math.max(...items.map((item) => (item.x ?? defaultInstructionX()) + instructionBlockWidth(item)));
+      const bottom = Math.max(...items.map((item) => (item.y ?? 96) + 74));
+      const frame = document.createElement("div");
+      frame.className = "macro-group-frame";
+      frame.style.left = `${left - 12}px`;
+      frame.style.top = `${top - 14}px`;
+      frame.style.width = `${right - left + 24}px`;
+      frame.style.height = `${bottom - top + 28}px`;
+      frame.dataset.label = "展开组";
+      dom.instructionList.appendChild(frame);
+    });
+  }
+
   function updateCanvasExtent() {
     const items = [
-      ...app.rawInstructions.map((item) => ({ x: item.x ?? defaultInstructionX(), y: item.y ?? 96, width: 360, height: 170 })),
+      ...app.rawInstructions.map((item) => ({ x: item.x ?? defaultInstructionX(), y: item.y ?? 96, width: instructionBlockWidth(item) + 60, height: 170 })),
       ...app.looseOperands.map((item) => ({ x: item.x ?? minBlockX(), y: item.y ?? 96, width: 140, height: 80 }))
     ];
     const viewportWidth = dom.programCanvas.clientWidth / app.canvasScale;
@@ -920,6 +1286,10 @@
     dom.instructionList.style.width = `${Math.ceil(maxRight)}px`;
     dom.instructionList.style.height = `${Math.ceil(maxBottom)}px`;
     dom.instructionList.style.setProperty("--softbus-height", `${Math.ceil(Math.max(360, harmonyBottom))}px`);
+  }
+
+  function instructionBlockWidth(instruction) {
+    return INSTRUCTION_DEFS[instruction.opcode]?.macro ? 410 : 300;
   }
 
   function renderLooseOperands() {
@@ -933,7 +1303,22 @@
       chip.style.left = `${operand.x ?? minBlockX()}px`;
       chip.style.top = `${operand.y ?? 96}px`;
       chip.title = "可自由拖动；靠近对应槽位后会自动吸附。双击删除。";
-      if (!runtime.isOpenHarmony) bindLooseOperandDrag(chip, operand);
+      if (!runtime.isOpenHarmony) {
+        bindLooseOperandDrag(chip, operand);
+      } else {
+        const payload = {
+          type: "operand",
+          id: operand.id,
+          kind: operand.kind,
+          value: operand.value
+        };
+        chip.addEventListener("touchstart", (event) => {
+          beginOhTouchDrag(event, payload, chip.textContent);
+        }, { passive: true });
+        chip.addEventListener("mousedown", (event) => {
+          beginOhMouseDrag(event, payload, chip.textContent);
+        });
+      }
       chip.addEventListener("dblclick", () => deleteLooseOperand(operand.id));
       chip.addEventListener("contextmenu", (event) => {
         event.preventDefault();
@@ -944,9 +1329,24 @@
   }
 
   function renderInstructionWarning(instruction) {
-    const writesRd = ["add", "sub", "addi", "and", "or", "xor", "andi", "ori", "xori", "sll", "srl", "sra", "slli", "srli", "srai", "lw", "jal", "jalr"].includes(instruction.opcode);
+    const writesRd = ["add", "sub", "addi", "and", "or", "xor", "andi", "ori", "xori", "sll", "srl", "sra", "slli", "srli", "srai", "lw", "jal", "jalr", "mv", "li", "neg", "not", "abs", "max", "lwadd"].includes(instruction.opcode);
     if (!writesRd || instruction.rd !== "x0") return "";
     return `<div class="block-warning">x0 是恒零寄存器，写入结果会被忽略。</div>`;
+  }
+
+  function renderInstructionError(error) {
+    return error ? `<div class="block-error">${escapeHtml(formatReadableTeachingText(error))}</div>` : "";
+  }
+
+  function errorsByInstructionIndex(errors) {
+    const map = new Map();
+    errors.forEach((error) => {
+      const match = String(error).match(/第\s*(\d+)\s*条/);
+      if (!match) return;
+      const index = Number(match[1]) - 1;
+      map.set(index, error);
+    });
+    return map;
   }
 
   function moveInstruction(id, x, y) {
@@ -1077,21 +1477,18 @@
     const boxes = instructions.map((instruction) => ({
       left: instruction.x ?? 36,
       top: instruction.y ?? 96,
-      right: (instruction.x ?? 36) + 300,
-      bottom: (instruction.y ?? 96) + 48
+      right: (instruction.x ?? 36) + instructionBlockWidth(instruction)
     }));
     return boxes.some((a, index) => boxes.slice(index + 1).some((b) => (
       a.left < b.right - 48 &&
       a.right > b.left + 48 &&
-      a.top < b.bottom - 10 &&
-      a.bottom > b.top + 10
+      Math.abs(a.top - b.top) < 34
     )));
   }
 
   function normalizeInstructionLayout(instructions) {
     const rows = [];
-    instructions
-      .sort((a, b) => (a.y ?? 0) - (b.y ?? 0) || (a.x ?? 0) - (b.x ?? 0))
+    sortRawInstructions(instructions)
       .forEach((instruction) => {
         const row = rows.find((candidate) => {
           const last = candidate.items[candidate.items.length - 1];
@@ -1108,7 +1505,7 @@
       .sort((a, b) => (a.x ?? 0) - (b.x ?? 0))
       .map((instruction, columnIndex) => ({
         ...instruction,
-        x: minBlockX() + columnIndex * 306,
+        x: minBlockX() + columnIndex * 420,
         y: 96 + rowIndex * 86
       })));
   }
@@ -1128,7 +1525,7 @@
       guide.className = "sort-guide";
       dom.programCanvas.appendChild(guide);
     }
-    guide.style.top = `${Math.max(76, y + 96)}px`;
+    guide.style.top = `${Math.max(76, y)}px`;
     guide.dataset.insertLabel = `插入为第 ${insertIndex + 1} 步`;
     guide.hidden = false;
   }
@@ -1447,9 +1844,11 @@
       ohTouchDrag.ghost = createOhDragGhost(ohTouchDrag.label);
       document.body.classList.toggle("dragging-label", ohTouchDrag.payload.kind === "label");
       document.body.classList.toggle("dragging-operand", ohTouchDrag.payload.type === "operand" && ohTouchDrag.payload.kind !== "label");
+      if (ohTouchDrag.payload.type === "operand") showOperandTrash();
     }
     moveOhDragGhost(point.x, point.y);
     updateOhDropHints(point.x, point.y);
+    if (ohTouchDrag.payload.type === "operand") updateOperandTrashHover(point.x, point.y);
     autoScrollCanvas(point.y);
   }
 
@@ -1478,9 +1877,11 @@
       ohTouchDrag.ghost = createOhDragGhost(ohTouchDrag.label);
       document.body.classList.toggle("dragging-label", ohTouchDrag.payload.kind === "label");
       document.body.classList.toggle("dragging-operand", ohTouchDrag.payload.type === "operand" && ohTouchDrag.payload.kind !== "label");
+      if (ohTouchDrag.payload.type === "operand") showOperandTrash();
     }
     moveOhDragGhost(point.x, point.y);
     updateOhDropHints(point.x, point.y);
+    if (ohTouchDrag.payload.type === "operand") updateOperandTrashHover(point.x, point.y);
     autoScrollCanvas(point.y);
   }
 
@@ -1497,9 +1898,10 @@
 
   function finishOhDrag(point) {
     const payload = ohTouchDrag.payload;
+    const overTrash = payload.type === "operand" && isPointerOverOperandTrash(point.x, point.y);
     cancelOhTouchDrag();
 
-    if (payload.type === "instruction" || payload.type === "move-instruction") {
+    if (payload.type === "instruction" || payload.type === "macro" || payload.type === "move-instruction") {
       const rect = dom.programCanvas.getBoundingClientRect();
       if (point.x >= rect.left && point.x <= rect.right && point.y >= rect.top && point.y <= rect.bottom) {
         const world = canvasPointFromClient(point.x, point.y);
@@ -1509,6 +1911,8 @@
         };
         if (payload.type === "instruction") {
           addInstruction(payload.opcode, position);
+        } else if (payload.type === "macro") {
+          addInstruction(payload.macro, position);
         } else {
           moveInstruction(payload.instructionId, ui.snapToGrid(position.x, 12), ui.snapToGrid(position.y, 12));
         }
@@ -1517,8 +1921,17 @@
       return;
     }
 
+    if (overTrash) {
+      deleteOhOperandPayload(payload);
+      return;
+    }
+
     const target = findOhDropTarget(payload, point.x, point.y);
     if (!target) {
+      if (placeOhOperandInWorkspace(payload, point)) {
+        renderError("");
+        return;
+      }
       selectPendingOperand(payload);
       return;
     }
@@ -1533,7 +1946,45 @@
     if (ohTouchDrag?.ghost) ohTouchDrag.ghost.remove();
     ohTouchDrag = null;
     clearOhDropHints();
+    hideOperandTrash();
     document.body.classList.remove("dragging-label", "dragging-operand");
+  }
+
+  function deleteOhOperandPayload(payload) {
+    if (!payload || payload.type !== "operand") return;
+    if (payload.detach?.instructionId && payload.detach?.field) {
+      pushEditHistory("delete attached operand");
+      updateInstruction(payload.detach.instructionId, payload.detach.field, "", { saveUndo: false });
+      return;
+    }
+    if (payload.id) {
+      deleteLooseOperand(payload.id);
+    }
+  }
+
+  function placeOhOperandInWorkspace(payload, point) {
+    if (!payload || payload.type !== "operand") return false;
+    const rect = dom.programCanvas.getBoundingClientRect();
+    if (point.x < rect.left || point.x > rect.right || point.y < rect.top || point.y > rect.bottom) return false;
+    const world = canvasPointFromClient(point.x, point.y);
+    const position = {
+      x: ui.snapToGrid(Math.max(minBlockX(), Math.min(world.x - 39, maxLooseOperandX())), 12),
+      y: ui.snapToGrid(Math.max(96, world.y - 17), 12)
+    };
+    pushEditHistory(payload.id ? "move loose operand" : payload.detach ? "detach operand to workspace" : "place operand");
+    app.rawInstructions = operandModel.detachPayloadSource(app.rawInstructions, payload);
+    if (payload.id) {
+      app.looseOperands = operandModel.updateLooseOperand(app.looseOperands, payload.id, position);
+    } else {
+      app.looseOperands = [
+        ...app.looseOperands,
+        operandModel.createLooseOperand(payload, position)
+      ];
+    }
+    app.pendingOperand = null;
+    resetMachine(false);
+    renderAll();
+    return true;
   }
 
   function readTouchPoint(event) {
@@ -1889,7 +2340,7 @@
       return;
     }
 
-    dom.assemblyPreview.textContent = app.parsedProgram.map((instruction, index) => `${index}: ${formatAssembly(instruction)}`).join("\n") || "暂无指令";
+    dom.assemblyPreview.textContent = orderedInstructions().map((instruction, index) => `${index}: ${formatAssembly(instruction)}`).join("\n") || "暂无指令";
   }
 
   function selectInstruction(id, additive) {
@@ -1978,7 +2429,7 @@
       .filter((instruction) => intersects(box, {
         left: instruction.x ?? defaultInstructionX(),
         top: instruction.y ?? 96,
-        width: 300,
+        width: instructionBlockWidth(instruction),
         height: 96
       }))
       .map((instruction) => instruction.id);
@@ -2002,13 +2453,13 @@
 
   function renderState() {
     dom.pcValue.textContent = formatValue(app.state.pc);
-    const visibleRegisters = REGISTERS.slice(0, 16);
+    const visibleRegisters = REGISTERS;
     dom.registerGrid.innerHTML = chunk(visibleRegisters, 4)
       .map((row) => `
         <div class="state-row-label">${row[0]}</div>
         ${row.map((name) => {
           const initialized = Object.prototype.hasOwnProperty.call(app.initialState.registers, name);
-          return `<button class="reg-cell ${app.changedRegisters.includes(name) ? "changed" : ""} ${initialized ? "initialized" : ""}" data-type="register" data-name="${name}" title="${name}"><strong>${formatValue(app.state.registers[name])}</strong></button>`;
+          return `<button class="reg-cell ${app.changedRegisters.includes(name) ? "changed" : ""} ${initialized ? "initialized" : ""}" data-type="register" data-name="${name}" title="${registerTitle(name)}"><strong>${formatValue(app.state.registers[name])}</strong></button>`;
         }).join("")}
       `)
       .join("");
@@ -2030,8 +2481,47 @@
         }).join("")}
       `)
       .join("");
+    renderGpioPanel();
     bindStateCells();
     dom.prevBtn.disabled = app.stateHistory.length === 0;
+  }
+
+  function renderGpioPanel() {
+    if (!dom.gpioPanel) return;
+    const x1 = Number(app.state.registers.x1 || 0);
+    const running = Boolean(app.timer || app.isAnimating);
+    const hasError = Boolean(parseProgram(app.rawInstructions).errors.length);
+    const halted = Boolean(app.state.halted);
+    const leds = [
+      {
+        key: "x1",
+        label: "LED-X1",
+        state: x1 !== 0,
+        text: `x1=${x1}`,
+        note: "x1 非 0 时点亮，可模拟外接 GPIO LED"
+      },
+      {
+        key: "run",
+        label: "RUN",
+        state: running,
+        text: running ? "执行中" : halted ? "已结束" : "待运行",
+        note: "模拟外部运行状态指示灯"
+      },
+      {
+        key: "err",
+        label: "ERR",
+        state: hasError,
+        text: hasError ? "异常" : "正常",
+        note: "解析错误或字段异常时点亮"
+      }
+    ];
+    dom.gpioPanel.innerHTML = leds.map((led) => `
+      <div class="gpio-led-card ${led.state ? "on" : "off"}" title="${escapeHtml(led.note)}">
+        <span class="gpio-led-bulb" aria-hidden="true"></span>
+        <strong>${escapeHtml(led.label)}</strong>
+        <em>${escapeHtml(led.text)}</em>
+      </div>
+    `).join("");
   }
 
   function chunk(items, size) {
@@ -2047,7 +2537,7 @@
     const values = targetType === "register" ? REGISTERS : machineState.listMemoryAddresses(app.initialState);
     const current = dom.stateTargetName.value;
     dom.stateTargetName.innerHTML = values
-      .map((value) => `<option value="${value}" ${String(value) === current ? "selected" : ""}>${targetType === "memory" ? `@${value}` : value}</option>`)
+      .map((value) => `<option value="${value}" ${String(value) === current ? "selected" : ""}>${targetType === "memory" ? `@${value}` : registerOptionLabel(value)}</option>`)
       .join("");
   }
 
@@ -2078,6 +2568,9 @@
 
   function bindStateCells() {
     document.querySelectorAll(".reg-cell, .mem-cell").forEach((cell) => {
+      cell.addEventListener("mouseenter", () => {
+        renderStateDetail(cell.dataset.type, cell.dataset.name);
+      });
       cell.addEventListener("click", () => {
         dom.stateTargetType.value = cell.dataset.type;
         renderStateTargetSelector();
@@ -2090,8 +2583,11 @@
   function renderStateDetail(type, name) {
     const initial = type === "register" ? app.initialState.registers[name] : app.initialState.memory[Number(name)];
     const current = type === "register" ? app.state.registers[name] : app.state.memory[Number(name)];
-    const label = type === "register" ? name : `存储器[${name}]`;
-    dom.selectedStateDetail.textContent = `${label} 当前值：${formatValue(current || 0)}；初始值：${initial === undefined ? "默认" : formatValue(initial)}`;
+    const label = type === "register" ? registerOptionLabel(name) : `存储器[${name}]`;
+    const tempNote = type === "register" && isTempRegister(name)
+      ? "。该寄存器属于 RISC-V ABI 临时寄存器池，后续复合指令内部临时运算优先使用它"
+      : "";
+    dom.selectedStateDetail.textContent = `${label} 当前值：${formatValue(current || 0)}；初始值：${initial === undefined ? "默认" : formatValue(initial)}${tempNote}`;
   }
 
   function formatValue(value) {
@@ -2100,14 +2596,20 @@
 
   function renderLog() {
     dom.executionLog.innerHTML = app.state.logs
-      .map((log) => `<li><strong>PC ${log.pc}</strong> ${log.assembly}<br />${log.explanation}</li>`)
+      .map((log) => `<li><strong>PC ${log.pc}</strong> ${escapeHtml(log.assembly)}<br />${escapeHtml(formatReadableTeachingText(log.explanation))}</li>`)
       .join("");
     dom.executionLog.scrollTop = dom.executionLog.scrollHeight;
   }
 
   function renderError(error) {
     dom.errorBox.hidden = !error;
-    dom.errorBox.textContent = error || "";
+    dom.errorBox.textContent = formatReadableTeachingText(error || "");
+  }
+
+  function formatReadableTeachingText(text) {
+    return String(text || "")
+      .replace(/([。！？；])(?=\S)/g, "$1 ")
+      .replace(/([.!?;])(?=\S)/g, "$1 ");
   }
 
   async function stepProgram() {
@@ -2131,7 +2633,7 @@
       app.state = state;
       app.changedRegisters = result.changedRegisters;
       app.changedMemoryAddresses = result.changedMemoryAddresses;
-      app.lastExecutedInstructionId = result.instruction?.id || null;
+      app.lastExecutedInstructionId = result.instruction?.sourceBlockId || result.instruction?.id || null;
       renderAll();
       await renderExecutionResult(result, previousState, previousPc, parsed.instructions.length);
     } catch (error) {
@@ -2315,18 +2817,29 @@
       updateRunState();
       return;
     }
+    if (!app.timer && !app.state.halted) {
+      startAutoRun();
+      return;
+    }
     pauseAutoRun();
   }
 
   function updateRunState() {
     const animationPaused = Boolean(stateAnimation.isStateAnimationPaused?.());
+    const readyToRun = !app.timer && !app.isAnimating && !app.state.halted;
+    const showRunIcon = animationPaused || readyToRun;
     document.body.classList.toggle("is-running", Boolean(app.timer));
     dom.prevBtn.disabled = app.stateHistory.length === 0 || Boolean(app.timer) || app.isAnimating;
     dom.stepBtn.disabled = app.state.halted || Boolean(app.timer) || app.isAnimating;
     dom.autoBtn.disabled = app.state.halted || Boolean(app.timer);
-    dom.pauseBtn.disabled = !app.timer && !app.isAnimating;
-    dom.pauseBtn.title = animationPaused ? "继续动画" : "暂停";
-    dom.pauseBtn.setAttribute("aria-label", animationPaused ? "继续动画" : "暂停");
+    dom.pauseBtn.disabled = app.state.halted;
+    dom.pauseBtn.title = showRunIcon ? "开始 / 继续" : "暂停";
+    dom.pauseBtn.setAttribute("aria-label", showRunIcon ? "开始 / 继续" : "暂停");
+    const pauseIcon = dom.pauseBtn.querySelector(".line-icon");
+    if (pauseIcon) {
+      pauseIcon.classList.toggle("icon-pause", !showRunIcon);
+      pauseIcon.classList.toggle("icon-run", showRunIcon);
+    }
     if (app.isAnimating && animationPaused) {
       dom.runState.textContent = "动画暂停";
     } else if (app.isAnimating) {
@@ -2376,13 +2889,13 @@
     renderWorkspaceHarmony(instructions, errorByIndex, step);
     if (instructions.length === 0) {
       dom.harmonyProgramSummary.innerHTML = `
-        <strong>当前没有可固化的硬件积木</strong>
-        <span>请先回到工作台添加指令积木。</span>
+        <strong>当前没有可映射的指令积木</strong>
+        <span>请先回到工作台添加指令积木，再查看后续硬件化接入路线。</span>
       `;
       dom.atomCanvas.innerHTML = `
         <div class="empty-hardware-state">
-          <strong>等待工作台状态</strong>
-          <span>指令积木出现后，这里会显示它与香橙派软总线、下方操作数小积木之间的连接关系。</span>
+          <strong>等待软件积木输入</strong>
+          <span>指令积木出现后，这里会显示它如何映射为后续视觉识别或智能积木节点数据。</span>
         </div>
       `;
       renderHarmonyStatus([], 0);
@@ -2393,9 +2906,9 @@
     const operandCount = instructions.reduce((sum, instruction) => sum + harmonyOperandsForInstruction(instruction).length, 0);
     const errorCount = errorByIndex.size;
     dom.harmonyProgramSummary.innerHTML = `
-      <strong>${instructions.length} 个指令硬件积木已入网</strong>
-      <span>${operandCount} 个下挂小积木被识别，${labels} 个标签帽被固化。</span>
-      <span class="${errorCount ? "harmony-error-text" : ""}">${errorCount ? `${errorCount} 个积木存在错误，已在图中标红。` : "当前汇编结构有效，可继续推进联网流程。"}</span>
+      <strong>${instructions.length} 个软件指令积木已生成</strong>
+      <span>${operandCount} 个操作数小积木可映射，${labels} 个标签帽可映射。</span>
+      <span class="${errorCount ? "harmony-error-text" : ""}">${errorCount ? `${errorCount} 个积木存在错误，已在图中标红。` : "当前汇编结构有效，可继续查看接入路线。"}</span>
       <span>当前 PC=${app.state.pc}，执行状态：${app.state.halted ? "已结束" : "可继续单步"}。</span>
     `;
     dom.atomCanvas.innerHTML = instructions.map((instruction, index) => renderHardwareInstructionBlock(instruction, index, errorByIndex.get(index))).join("");
@@ -2407,7 +2920,7 @@
     dom.workspaceHarmonyPanel.dataset.step = String(step);
     if (!app.harmonyWorkspaceMode) return;
     if (instructions.length === 0) {
-      dom.workspaceHarmonySummary.innerHTML = `<strong>暂无硬件通信视图</strong><span>先在左侧工作台添加指令积木。</span>`;
+      dom.workspaceHarmonySummary.innerHTML = `<strong>暂无接入路线视图</strong><span>先在左侧工作台添加指令积木。</span>`;
       dom.workspaceHarmonyCanvas.innerHTML = `<div class="empty-hardware-state compact">等待工作台状态</div>`;
       return;
     }
@@ -2421,7 +2934,7 @@
   }
 
   function harmonyStepTitle(step) {
-    return ["读取工作台", "识别连接", "星闪入网", "状态传输", "固化展示"][step] || "读取工作台";
+    return ["OH 应用启动", "教学模拟执行", "视觉识别", "智能积木", "软总线设备"][step] || "OH 应用启动";
   }
 
   function renderMiniHardwareBlock(instruction, index, error) {
@@ -2448,16 +2961,21 @@
       : "";
     return `
       <article class="hardware-row ${error ? "has-error" : ""}" style="--delay: ${index * 90}ms">
-        <div class="starlight-link" aria-label="星闪传输协议">
+        <div class="starlight-link" aria-label="后续通信链路">
           <i class="starlight-pulse pulse-out" aria-hidden="true"></i>
           <i class="starlight-pulse pulse-back" aria-hidden="true"></i>
           <span class="starlight-icon">${renderStarlightIcon()}</span>
-          <span>星闪传输协议</span>
+          <span>后续通信链路</span>
         </div>
         <div class="hardware-instruction">
           ${labelTag}
           <div class="hardware-main-block">
-            <span>指令积木块 ${index + 1}</span>
+            <span class="hardware-led-strip" aria-label="积木状态灯">
+              <i class="hardware-led green"></i>
+              <i class="hardware-led ${error ? "red on" : "red"}"></i>
+              <i class="hardware-led blue on"></i>
+            </span>
+            <span>软件积木映射 ${index + 1}</span>
             <strong>${escapeHtml(instruction.opcode.toUpperCase())}</strong>
           </div>
           <div class="connection-recognition">
@@ -2502,10 +3020,10 @@
 
   function renderHardwareOperand(operand) {
     const label = operand.kind === "register"
-      ? "寄存器积木块"
+      ? "寄存器小积木"
       : operand.kind === "immediate"
-        ? "立即数/地址积木块"
-        : "标签积木块";
+        ? "立即数/地址小积木"
+        : "标签小积木";
     return `
       <div class="hardware-operand ${operand.kind}">
         <span>${escapeHtml(operand.field)}</span>
@@ -2517,31 +3035,31 @@
 
   function renderHarmonyStatus(instructions, operandCount) {
     const stepLabels = [
-      "只读取工作台快照：先看到每个指令硬件积木，连接线暂不出现。",
-      "连接状态识别：指令块与寄存器、立即数、标签等小积木之间出现虚线。",
-      "星闪入网：每个指令块与香橙派软总线建立近场通信链路。",
-      "状态传输：软总线开始接收每个指令积木上报的连接关系。",
-      "固化展示：所有识别结果稳定显示，可用于课堂讲解或答辩说明。"
+      "已完成：OpenHarmony 应用在香橙派 RV2 上启动，ArkWeb 加载本地教学页面。",
+      "已完成：RISC-V 教学模拟器读取工作台指令，并更新寄存器、存储器和 PC 状态。",
+      "下一阶段：摄像头识别真实积木画面，生成与当前工作台一致的数字孪生布局。",
+      "后续接入：少量智能积木模块向 OpenHarmony 主控上报身份、位置和连接状态。",
+      "设计态：软总线统一管理智能积木、LED、语音或屏幕等反馈设备。"
     ];
     dom.harmonyFlowList.innerHTML = [
-      "读取工作台：把当前软件积木序列作为硬件积木快照。",
-      "连接状态识别：识别每条指令下方已经吸附的寄存器、立即数、标签等小积木。",
-      "星闪入网：每个指令积木通过近场链路把自身状态发给香橙派。",
-      "软总线固化：BusCenter 维护逻辑设备关系，Trans 传输连接状态。",
-      "课堂展示：OpenHarmony 页把原本硬件方案的软件模拟结果画成框图。"
+      "[已完成] OpenHarmony Stage 应用运行在香橙派 RV2。",
+      "[已完成] ArkWeb 加载本地 RISC-V 教学软件。",
+      "[已完成] 教学模拟器执行指令并更新机器状态。",
+      "[下一阶段] 摄像头识别实体积木拼接画面。",
+      "[设计态] 软总线发现智能积木节点，并同步拓扑或外设反馈。"
     ].map((item, index) => `<li class="${index === app.harmonyStep ? "active" : ""}">${item}</li>`).join("");
 
     const capabilities = [
       stepLabels[app.harmonyStep],
-      `已固化 ${instructions.length} 条指令积木，按工作台从上到下顺序入网。`,
-      `已识别 ${operandCount} 个下挂小积木，虚线表示它们与指令块的连接状态。`,
+      `当前工作台共有 ${instructions.length} 条指令积木，可映射为后续实体积木节点。`,
+      `当前共有 ${operandCount} 个操作数小积木，后续可来自视觉识别或智能节点上报。`,
       "工作台中拖动、添加、删除或修改操作数后，本图会随 renderAll 自动更新。"
     ];
     if (app.harmonyStep >= 2) {
-      capabilities.push("星闪链路出现后，代表指令硬件积木已开始向香橙派上报自身状态。");
+      capabilities.push("通信链路图标表示后续接入位置，不代表当前已完成真实星闪或软总线通信。");
     }
     if (instructions.some((instruction) => instruction.labelTag || instruction.label)) {
-      capabilities.push("标签帽和标签引用会作为独立小积木参与固化，适合解释分支跳转目标。");
+      capabilities.push("标签帽和标签引用会作为独立小积木参与映射，适合解释分支跳转目标。");
     }
     if (instructions.some((instruction) => ["lw", "sw"].includes(instruction.opcode))) {
       capabilities.push("访存指令会显示地址相关小积木，便于说明硬件积木如何识别地址拼接。");
@@ -2571,7 +3089,8 @@
   function renderExamples() {
     dom.exampleList.innerHTML = EXAMPLES.map(
       (example) => `
-        <article class="example-card">
+        <article class="example-card ${exampleCategoryClass(example)}">
+          <span class="example-category">${escapeHtml(example.category || exampleCategoryName(example))}</span>
           <h3>${example.title}</h3>
           <p>${example.description}</p>
           <button data-example="${example.id}">加载案例</button>
@@ -2598,6 +3117,34 @@
         switchView("workspace");
       });
     });
+  }
+
+  function exampleCategoryName(example) {
+    const opcode = example.instructions?.[0]?.opcode || "";
+    const def = INSTRUCTION_DEFS[opcode];
+    const color = def?.color || "arithmetic";
+    return {
+      arithmetic: "算术",
+      logic: "逻辑",
+      shift: "移位",
+      memory: "访存",
+      branch: "分支",
+      jump: "跳转",
+      macro: "复合"
+    }[color] || "算术";
+  }
+
+  function exampleCategoryClass(example) {
+    const name = example.category || exampleCategoryName(example);
+    return {
+      "算术": "arithmetic",
+      "逻辑": "logic",
+      "移位": "shift",
+      "访存": "memory",
+      "分支": "branch",
+      "跳转": "jump",
+      "复合": "macro"
+    }[name] || "arithmetic";
   }
 
   init();
