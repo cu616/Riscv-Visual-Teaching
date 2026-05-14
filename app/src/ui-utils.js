@@ -8,7 +8,7 @@
   }
 
   function isAddressField(opcode, field) {
-    return (opcode === "lw" || opcode === "sw" || opcode === "jalr") && (field === "imm" || field === "rs1");
+    return (opcode === "lw" || opcode === "sw" || opcode === "jalr" || opcode === "lwadd") && (field === "imm" || field === "rs1");
   }
 
   function readDragPayload(event) {
