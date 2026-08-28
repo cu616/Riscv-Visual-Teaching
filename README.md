@@ -8,7 +8,7 @@
 
 - 主线：`app/` 非 Blockly 自研积木界面，后续优先改造成桌面版。
 - 保留：`desktop/` Blockly 迁移版作为技术验证，用来参考成熟拖拽、连接约束、序列化和 Electron 打包经验。
-- 远期：OpenHarmony 先采用 ArkWeb/WebView 承载自研 Web UI，再根据比赛展示和性能需要逐步原生化到 ArkUI。
+- 远期：OpenHarmony 先采用 ArkWeb/WebView 承载自研 Web UI，再根据设备端展示和性能需要逐步原生化到 ArkUI。
 
 仓库中存在一些早期路线文档，里面可能仍写着“第一版使用 Blockly”“右侧固定显示数据流动画”等旧方案。遇到冲突时，以 [文档状态与路线索引](docs/文档状态与路线索引.md) 和本 README 为准。
 

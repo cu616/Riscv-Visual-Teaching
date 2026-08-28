@@ -1,6 +1,6 @@
 # OpenHarmony 工作台展示整合修改总结
 
-> 状态说明：本文是 OpenHarmony 工作台展示能力的阶段整合记录。2026-05-14 起，决赛演示主入口已从早期“OpenHarmony 概念 / 硬件通信视图”调整为 `O+R 实机路线`，并明确区分“当前已完成的软件样机”和“后续实体智能积木接入路线”。当前 OpenHarmony 移植总体路线请以 [OpenHarmony ArkWeb 移植版说明](../openharmony-port/README.md)、[2026-05-09 UI 与 OpenHarmony 展示移植方案](../openharmony-port/docs/2026-05-09_UI与OpenHarmony展示移植方案.md) 和 [OpenHarmony / 香橙派移植记录](../openharmony-port/docs/移植记录.md) 为准。
+> 状态说明：本文是 OpenHarmony 工作台展示能力的阶段整合记录。2026-05-14 起，设备端展示主入口已从早期“OpenHarmony 概念 / 硬件通信视图”调整为 `OpenHarmony/RISC-V 实机路线`，并明确区分“当前已完成的软件样机”和“后续实体智能积木接入路线”。当前 OpenHarmony 移植总体路线请以 [OpenHarmony ArkWeb 移植版说明](../openharmony-port/README.md)、[2026-05-09 UI 与 OpenHarmony 展示移植方案](../openharmony-port/docs/2026-05-09_UI与OpenHarmony展示移植方案.md) 和 [OpenHarmony / 香橙派移植记录](../openharmony-port/docs/移植记录.md) 为准。
 
 本文档记录本轮对 `Riscv-Visual-Teaching` 工作区的主要修改，便于上传 GitHub、组内交接和后续答辩说明。
 
@@ -115,15 +115,15 @@ npm.cmd run oh:smoke
 - OpenHarmony rawfile 已同步。
 - OpenHarmony rawfile smoke test 通过。
 
-## 四点五、2026-05-14 决赛演示版补充
+## 四点五、2026-05-14 设备端展示版补充
 
-本轮根据决赛演示反馈，对展示表达做了降风险和增强可视化处理：
+本轮根据设备端展示反馈，对展示表达做了边界说明和可视化增强：
 
 - 顶部运行标识改为 `Web · 模拟执行` / `OH · RV2 · 模拟执行`，点击后展示完整说明，避免 `SIM`、`LED ON/OFF` 等英文缩写造成误解。
 - `GPIO 模拟外设` 从机器状态区独立展示，使用 `LED-X1`、`RUN`、`ERR` 表达模拟硬件反馈。
-- `O+R 实机路线` 中的外部 LED 模块移到 OpenHarmony 主控卡片下方，表示它是主控之外的外设模块，而不是主控内部能力。
-- `O+R 实机路线` 支持页面比例调整，默认 90%，可缩小到 50% 以便在答辩屏幕上纵观全局。
-- `O+R 实机路线` 的缩放从 CSS `zoom` 改为 `transform: scale(...)`，并在离开 O+R 页面时复位渲染缩放，降低 ArkWeb / WebView 切换页面黑屏风险。
+- `OpenHarmony/RISC-V 实机路线` 中的外部 LED 模块移到 OpenHarmony 主控卡片下方，表示它是主控之外的外设模块，而不是主控内部能力。
+- `OpenHarmony/RISC-V 实机路线` 支持页面比例调整，默认 90%，可缩小到 50% 以便在外接屏幕上纵观全局。
+- `OpenHarmony/RISC-V 实机路线` 的缩放从 CSS `zoom` 改为 `transform: scale(...)`，并在离开该页面时复位渲染缩放，降低 ArkWeb / WebView 切换页面黑屏风险。
 - `示例案例` 页面加入独立纵向滚动和底部留白，避免底部案例卡片被遮挡。
 - 工作台错误提示改为按指令定位，只标红出错积木，并在该积木下方显示具体错误，不再全部积木统一标红。
 - OpenHarmony 触控拖拽支持小积木先放到工作台空白区形成游离小积木，再二次拼接；也支持拖入高层级删除区删除或清空槽位。
@@ -135,7 +135,7 @@ npm.cmd run oh:smoke
 
 ## 五、Git Bash 上传命令参考
 
-如果需要把当前决赛演示交互修改上传到 GitHub，可以在项目根目录打开 Git Bash，然后运行：
+如果需要把当前设备端展示交互修改上传到 GitHub，可以在项目根目录打开 Git Bash，然后运行：
 
 ```bash
 git status
@@ -153,14 +153,14 @@ git add app/index.html app/src/app.js app/src/instructions.js app/src/ui-utils.j
   docs/OpenHarmony工作台展示整合修改总结.md \
   docs/机器状态格动画重构方案.md \
   openharmony-port/docs/移植记录.md
-git commit -m "feat: refine finals demo interaction"
+git commit -m "feat: refine device demo interaction"
 git push origin main
 ```
 
 如果你不想直接推到 `main`，更稳妥的方式是新建分支：
 
 ```bash
-git checkout -b feat/finals-demo-interaction
+git checkout -b feat/device-demo-interaction
 git add app/index.html app/src/app.js app/src/instructions.js app/src/ui-utils.js app/styles.css \
   openharmony-port/entry/src/main/resources/rawfile/app/index.html \
   openharmony-port/entry/src/main/resources/rawfile/app/src/app.js \
@@ -175,8 +175,8 @@ git add app/index.html app/src/app.js app/src/instructions.js app/src/ui-utils.j
   docs/OpenHarmony工作台展示整合修改总结.md \
   docs/机器状态格动画重构方案.md \
   openharmony-port/docs/移植记录.md
-git commit -m "feat: refine finals demo interaction"
-git push -u origin feat/finals-demo-interaction
+git commit -m "feat: refine device demo interaction"
+git push -u origin feat/device-demo-interaction
 ```
 
-注意：当前本地还有 `.analysis_extracted/`、`.codex/skills/`、`tmp/`、`ohos_electron_hap/`、PDF 手册和比赛文档区等未跟踪或材料文件。它们不是本轮软件交互修改的必需提交内容，默认不建议混入本次代码提交，除非小组明确要一起上传。
+注意：当前本地可能存在 `.analysis_extracted/`、`.codex/skills/`、`tmp/`、`ohos_electron_hap/`、PDF 手册和临时材料目录等未跟踪文件。它们不是本轮软件交互修改的必需提交内容，默认不建议混入本次代码提交。
