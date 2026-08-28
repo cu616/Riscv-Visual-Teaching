@@ -41,6 +41,9 @@ K-Star申报材料/
 领奖/
 比赛文档/
 立项升级/
+docs/*
+!docs/
+!docs/CODE_STRUCTURE.md
 tmp/
 .analysis_extracted/
 .docx_scan_*/
