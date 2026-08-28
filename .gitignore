@@ -35,3 +35,16 @@ openharmony-port/entry/oh_modules/
 logs/
 *.log
 .DS_Store
+
+# Local contest materials, personal records, and large reference assets.
+领奖/
+比赛文档/
+立项升级/
+tmp/
+.analysis_extracted/
+.docx_scan_*/
+.docx_scan_*.zip
+_atomgit_publish_clean/
+ohos_electron_hap/
+tatus --short
+K-Star申报材料/参考资料/演示.mp4
