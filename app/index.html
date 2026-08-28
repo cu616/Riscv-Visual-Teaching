@@ -16,7 +16,7 @@
         <nav class="tabs" aria-label="页面导航">
           <button class="tab active" data-view="workspace">工作台</button>
           <button class="tab" data-view="examples">示例案例</button>
-          <button class="tab" data-view="harmony">O+R 实机路线</button>
+          <button class="tab" data-view="harmony">开鸿/RISC-V 实机路线</button>
         </nav>
       </header>
 
@@ -56,7 +56,7 @@
             <button id="runtimeState" class="status-pill runtime-pill" type="button">Web</button>
             <div id="runtimeDetailPopover" class="runtime-detail-popover" hidden>
               <strong>运行与执行说明</strong>
-              <p id="runtimeDetailText">当前拼接指令由 RISC-V 教学模拟器执行，用于可视化解释指令语义；它不是直接改写 CPU 真实寄存器。</p>
+              <p id="runtimeDetailText">当前画面为 OpenHarmony ArkWeb 移植演示界面的桌面录制预览；指令仍由 RISC-V 教学模拟器解释执行，不直接改写 CPU 真实寄存器。</p>
             </div>
           </section>
 
@@ -325,11 +325,11 @@
                   <button id="harmonyNextStepBtn" class="primary">推进一步</button>
                   <button id="harmonyResetStepBtn">重置流程</button>
                 </div>
-                <div class="harmony-zoom-controls" aria-label="O+R 页面比例">
-                  <button id="harmonyZoomOutBtn" title="缩小 O+R 路线图">-</button>
+                <div class="harmony-zoom-controls" aria-label="开鸿/RISC-V 页面比例">
+                  <button id="harmonyZoomOutBtn" title="缩小开鸿/RISC-V 路线图">-</button>
                   <span id="harmonyZoomReadout">100%</span>
-                  <button id="harmonyZoomInBtn" title="放大 O+R 路线图">+</button>
-                  <button id="harmonyZoomResetBtn" title="恢复 O+R 路线图比例">重置</button>
+                  <button id="harmonyZoomInBtn" title="放大开鸿/RISC-V 路线图">+</button>
+                  <button id="harmonyZoomResetBtn" title="恢复开鸿/RISC-V 路线图比例">重置</button>
                 </div>
                 <ol id="harmonyFlowList" class="harmony-flow-list"></ol>
                 <ul id="harmonyCapabilityList" class="capability-list"></ul>
@@ -363,7 +363,7 @@
 
             <div class="concept-list harmony-note">
               <p><strong>对应关系：</strong>工作台中的一条指令大积木对应未来一个硬件指令积木；它下方的寄存器、立即数、标签等小积木对应未来硬件子积木或视觉识别结果。当前软件读取的是工作台数据，用于证明“积木语义到 RISC-V 指令执行”的核心链路。</p>
-              <p><strong>项目边界：</strong>当前已完成 OpenHarmony 实机运行和 RISC-V 教学模拟执行；真实积木识别、软总线发现、远端 LED/语音/屏幕反馈属于后续硬件化路线，不在本次决赛样机中夸大为已完成能力。</p>
+              <p><strong>项目边界：</strong>当前已完成 OpenHarmony 实机运行和 RISC-V 教学模拟执行；真实积木识别、软总线发现、远端 LED/语音/屏幕反馈属于后续硬件化路线，不在当前设备端样机中夸大为已完成能力。</p>
             </div>
           </div>
         </section>
