@@ -38,6 +38,10 @@ try {
   assertIncludes(indexHtml, 'id="caseTitleInput"', "case title input is missing");
   assertIncludes(indexHtml, 'id="teachingGoalInput"', "teaching goal input is missing");
   assertIncludes(indexHtml, 'id="teachingNotesInput"', "teaching notes input is missing");
+  assertIncludes(indexHtml, 'id="visionCaptureBtn"', "vision capture entry is missing");
+  assertIncludes(indexHtml, 'id="visionCameraSelect"', "vision camera selector is missing");
+  assertIncludes(indexHtml, 'id="visionPreviewCanvas"', "vision preview canvas is missing");
+  assertIncludes(indexHtml, 'id="visionResultList"', "vision result editor is missing");
 
   const assetPaths = [
     ...extractAssetPaths(indexHtml, /<script[^>]+src="([^"]+)"/g),

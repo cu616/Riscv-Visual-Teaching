@@ -3037,7 +3037,7 @@
     const stepLabels = [
       "已完成：OpenHarmony 应用在香橙派 RV2 上启动，ArkWeb 加载本地教学页面。",
       "已完成：RISC-V 教学模拟器读取工作台指令，并更新寄存器、存储器和 PC 状态。",
-      "下一阶段：摄像头识别真实积木画面，生成与当前工作台一致的数字孪生布局。",
+      "已完成（Web / 桌面端）：摄像头或图片识别实体积木，核对后生成工作台数字布局。",
       "后续接入：少量智能积木模块向 OpenHarmony 主控上报身份、位置和连接状态。",
       "设计态：软总线统一管理智能积木、LED、语音或屏幕等反馈设备。"
     ];
@@ -3045,7 +3045,7 @@
       "[已完成] OpenHarmony Stage 应用运行在香橙派 RV2。",
       "[已完成] ArkWeb 加载本地 RISC-V 教学软件。",
       "[已完成] 教学模拟器执行指令并更新机器状态。",
-      "[下一阶段] 摄像头识别实体积木拼接画面。",
+      "[已完成 · Web] 摄像头或图片识别实体积木拼接画面。",
       "[设计态] 软总线发现智能积木节点，并同步拓扑或外设反馈。"
     ].map((item, index) => `<li class="${index === app.harmonyStep ? "active" : ""}">${item}</li>`).join("");
 
@@ -3147,5 +3147,40 @@
     }[name] || "arithmetic";
   }
 
+  window.RiscVAppVisionBridge = {
+    instructionDefinitions: INSTRUCTION_DEFS,
+    baseOpcodes: Object.keys(INSTRUCTION_DEFS).filter((opcode) => !INSTRUCTION_DEFS[opcode]?.macro),
+    applyInstructions(instructions, mode = "replace") {
+      const source = Array.isArray(instructions) ? instructions : [];
+      if (!source.length) throw new Error("没有可导入的识别指令。");
+      const append = mode === "append";
+      const existing = append ? app.rawInstructions : [];
+      const highestY = existing.reduce((highest, instruction) => Math.max(highest, Number(instruction.y) || 0), -58);
+      const startY = append ? highestY + 154 : 96;
+      const imported = source.map((instruction, index) => ({
+        ...createDefaultInstruction(instruction.opcode, {
+          x: defaultInstructionX(),
+          y: startY + index * 154
+        }),
+        ...instruction,
+        id: crypto.randomUUID(),
+        x: defaultInstructionX(),
+        y: startY + index * 154
+      }));
+      const candidate = [...existing, ...imported];
+      const parsed = parseProgram(candidate);
+      if (parsed.errors.length) throw new Error(parsed.errors[0]);
+      pushEditHistory("vision import");
+      app.rawInstructions = candidate;
+      if (!append) {
+        app.looseOperands = [];
+        app.selectedLooseOperandIds = [];
+      }
+      app.selectedInstructionIds = imported.map((instruction) => instruction.id);
+      resetMachine(false);
+      renderAll();
+      return imported.length;
+    }
+  };
   init();
 })();

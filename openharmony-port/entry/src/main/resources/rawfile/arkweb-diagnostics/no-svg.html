@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>RISC-V 指令集可视化教学软件</title>
-    <link rel="stylesheet" href="../app/styles.css" />
+    <link rel="stylesheet" href="./styles.css?v=20260925-2" />
     <link rel="stylesheet" href="../app/openharmony-port.css" />
   </head>
   <body>
@@ -158,6 +158,7 @@
               <div class="panel-heading">
                 <h2>指令编辑区</h2>
                 <div class="canvas-corner-tools" aria-label="编辑区视图工具">
+                  <button id="visionCaptureBtn" class="tool-btn vision-trigger-btn" title="连接摄像头或上传积木照片">拍摄识别</button>
                   <button id="zoomOutBtn" class="tool-btn" title="缩小视图">-</button>
                   <button id="zoomResetBtn" class="tool-btn scale-readout" title="视图比例">100%</button>
                   <button id="zoomInBtn" class="tool-btn" title="放大视图">+</button>
@@ -301,13 +302,13 @@
                 <h2>把当前可运行样机，说明为后续智能积木系统的软件底座</h2>
                 <p>
                   本页展示三类状态：已完成的 OpenHarmony + 香橙派 RV2 实机运行，当前软件对 RISC-V 指令拼接与执行过程的模拟，
-                  以及后续摄像头识别、智能积木节点和软总线接入路线。当前版本不宣称已经完成真实软总线设备通信。
+                  网页与桌面端已经支持摄像头 / 图片识别；OpenHarmony 真机摄像头、智能积木节点和软总线仍按后续接入路线推进。
                 </p>
               </div>
               <div class="harmony-summary" aria-label="接入路线">
                 <span>已完成：OH 实机运行</span>
                 <span>已完成：教学模拟器</span>
-                <span>下一阶段：视觉识别</span>
+                <span>已完成：Web 视觉识别</span>
                 <span>设计态：软总线设备</span>
               </div>
             </div>
@@ -364,11 +365,91 @@
 
             <div class="concept-list harmony-note">
               <p><strong>对应关系：</strong>工作台中的一条指令大积木对应未来一个硬件指令积木；它下方的寄存器、立即数、标签等小积木对应未来硬件子积木或视觉识别结果。当前软件读取的是工作台数据，用于证明“积木语义到 RISC-V 指令执行”的核心链路。</p>
-              <p><strong>项目边界：</strong>当前已完成 OpenHarmony 实机运行和 RISC-V 教学模拟执行；真实积木识别、软总线发现、远端 LED/语音/屏幕反馈属于后续硬件化路线，不在当前设备端样机中夸大为已完成能力。</p>
+              <p><strong>项目边界：</strong>网页与桌面端已支持摄像头或图片导入、积木颜色 / 尺寸 / 布局识别及打印标签校正；OpenHarmony 真机摄像头权限适配、软总线发现和远端 LED / 语音 / 屏幕反馈仍属于后续硬件化路线。</p>
             </div>
           </div>
         </section>
       </main>
+    </div>
+
+    <div id="visionDialogBackdrop" class="vision-dialog-backdrop" hidden>
+      <section class="vision-dialog" role="dialog" aria-modal="true" aria-labelledby="visionDialogTitle">
+        <header class="vision-dialog-header">
+          <div>
+            <p class="eyebrow">Physical Blocks · Local Vision</p>
+            <h2 id="visionDialogTitle">拍摄实体积木并生成程序</h2>
+          </div>
+          <button id="visionCloseBtn" class="tool-btn" type="button" title="关闭拍摄识别" aria-label="关闭拍摄识别">×</button>
+        </header>
+
+        <div class="vision-dialog-body">
+          <section class="vision-source-panel">
+            <div class="vision-section-heading">
+              <div>
+                <strong>1. 获取照片</strong>
+                <span>可选择内置或外接摄像头，也可以直接上传图片</span>
+              </div>
+            </div>
+            <div class="vision-camera-controls">
+              <label>
+                摄像头
+                <select id="visionCameraSelect" aria-label="选择摄像头"></select>
+              </label>
+              <button id="visionStartCameraBtn" type="button">打开摄像头</button>
+              <button id="visionCaptureFrameBtn" class="primary" type="button" disabled>拍照</button>
+              <label class="file-button" title="从本地选择积木照片">
+                上传照片
+                <input id="visionImageInput" type="file" accept="image/*" />
+              </label>
+            </div>
+            <div class="vision-media-stage">
+              <video id="visionVideo" playsinline muted hidden></video>
+              <canvas id="visionPreviewCanvas" hidden></canvas>
+              <div id="visionEmptyState" class="vision-empty-state">
+                <strong>尚未获取积木照片</strong>
+                <span>请打开摄像头拍照，或上传一张完整、清晰的积木程序照片。</span>
+              </div>
+            </div>
+            <div class="vision-analysis-controls">
+              <label class="vision-check-control">
+                <input id="visionOcrToggle" type="checkbox" checked />
+                识别打印标签
+              </label>
+              <button id="visionAnalyzeBtn" class="primary" type="button" disabled>开始识别</button>
+              <span class="vision-privacy-note">打印模板在本机匹配；未匹配标签按需加载补充 OCR。</span>
+            </div>
+          </section>
+
+          <section class="vision-result-panel">
+            <div class="vision-section-heading">
+              <div>
+                <strong>2. 核对识别结果</strong>
+                <span>可修改或删除识别积木；黄色结构警示可继续导入，红色语法错误需先修正</span>
+              </div>
+              <label class="vision-import-mode">
+                导入方式
+                <select id="visionImportMode">
+                  <option value="replace">替换当前程序</option>
+                  <option value="append">追加到当前程序</option>
+                </select>
+              </label>
+            </div>
+            <div id="visionStatus" class="vision-status" role="status" aria-live="polite">等待照片。</div>
+            <div id="visionWarnings" class="vision-warnings" hidden></div>
+            <div id="visionResultList" class="vision-result-list">
+              <div class="vision-result-empty">完成拍照后点击“开始识别”。</div>
+            </div>
+          </section>
+        </div>
+
+        <footer class="vision-dialog-footer">
+          <span>颜色用于判断类别，打印标签用于确定具体指令与参数。</span>
+          <div>
+            <button id="visionCancelBtn" type="button">取消</button>
+            <button id="visionApplyBtn" class="primary" type="button" disabled>应用到指令编辑区</button>
+          </div>
+        </footer>
+      </section>
     </div>
 
     <script src="../app/src/instructions.js"></script>
@@ -379,7 +460,11 @@
     <script src="../app/src/case-format.js"></script>
     <script src="../app/src/operand-model.js"></script>
     <script src="../app/src/machine-state.js"></script>
+    <script src="../app/src/printed-label-templates.js?v=20260927"></script>
+    <script src="../app/src/printed-labels.js?v=20260927"></script>
+    <script src="../app/src/vision.js?v=20260927"></script>
     <script src="../app/openharmony-bridge.js"></script>
     <script src="../app/src/app.js"></script>
+    <script src="../app/src/vision-controller.js?v=20260927"></script>
   </body>
 </html>

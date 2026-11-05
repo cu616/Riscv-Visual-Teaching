@@ -8,7 +8,7 @@ const rawfileRoot = join(portRoot, "entry", "src", "main", "resources", "rawfile
 const sourceIndexPath = join(rawfileRoot, "app", "index.html");
 const diagnosticsRoot = join(rawfileRoot, "arkweb-diagnostics");
 
-const sourceIndex = await readFile(sourceIndexPath, "utf8");
+const sourceIndex = (await readFile(sourceIndexPath, "utf8")).replace(/\r\n/g, "\n");
 
 function rewriteAssetPaths(html) {
   return html
