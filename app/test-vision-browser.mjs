@@ -96,7 +96,7 @@ try {
   // The new cases are screenshots. Only feed their photo area to the recognizer.
   const screenshots = [
     [13, [22, 227, 645, 362]], [14, [26, 210, 644, 362]], [15, [27, 216, 644, 362]],
-    [16, [30, 211, 644, 362]], [17, [25, 293, 644, 362]]
+    [16, [30, 211, 644, 362]], [17, [25, 293, 644, 362]], [18, [25, 323, 644, 362]]
   ];
   const captureCases = await page.evaluate(async (screenshots) => {
     window.Tesseract = { createWorker: async () => { throw new Error("Offline test"); } };
@@ -172,12 +172,25 @@ try {
     await page.locator('[data-vision-index="2"] [data-vision-field="rd"]').fill("x12");
   }
   assert(await page.locator("#visionApplyBtn").isEnabled(), "manually reviewing obscured fields should restore import");
-  console.log("Screenshots 13–17 passed: glare recovery, missed-row protection, and manual review of obscured fields.");
+  const duplicateScreenshot = captureCases[5].result;
+  assert(duplicateScreenshot.drafts.filter(({ category }) => category === "jump").length <= 1);
+  assert.deepEqual(programFrom(duplicateScreenshot).slice(-2), [expectedCapture[0], expectedLoad]);
+  console.log("Screenshots 13–18 passed: glare recovery, missed-row protection, and manual review of obscured fields.");
 
   const results = await page.evaluate(async (samples) => {
     const load = (url) => new Promise((resolve, reject) => {
       const img = new Image(); img.onload = () => resolve(img); img.onerror = reject; img.src = url;
     });
+    async function drawSticker(ctx, kind, value, x, y, width, height) {
+      const sample = samples.find((item) => item.kind === kind && item.value === value);
+      const image = await load(`/pictures/labels/${sample.file}`);
+      const r = sample.rect;
+      const scale = Math.min((width - 12) / r.width, (height - 9) / r.height);
+      const textWidth = r.width * scale, textHeight = r.height * scale;
+      ctx.fillStyle = "white";
+      ctx.fillRect(x, y, width, height);
+      ctx.drawImage(image, r.left, r.top, r.width, r.height, x + (width - textWidth) / 2, y + (height - textHeight) / 2, textWidth, textHeight);
+    }
     async function scene(opcode = "addi", signed = false) {
       const canvas = document.createElement("canvas"); canvas.width = 600; canvas.height = 400;
       const ctx = canvas.getContext("2d"); ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, 600, 400);
@@ -208,6 +221,25 @@ try {
     const defs = window.RiscVTeaching.INSTRUCTION_DEFS;
     const offline = await window.RiscVVision.analyzeCanvas(await scene(), { instructionDefinitions: defs });
     const unsupported = await window.RiscVVision.analyzeCanvas(await scene("lb"), { instructionDefinitions: defs });
+    // Simulate a second, shorter reading of the top instruction's sticker.
+    // Both sticker boxes are separate, but their red spans belong to one bar.
+    const bars = document.createElement("canvas");
+    bars.width = 600; bars.height = 400;
+    const ctx = bars.getContext("2d");
+    ctx.fillStyle = "white"; ctx.fillRect(0, 0, 600, 400);
+    for (const y of [40, 200]) {
+      ctx.fillStyle = "#d03017"; ctx.fillRect(80, y, 440, 70);
+      await drawSticker(ctx, "instruction", "jalr", 118, y + 12, 79, 38);
+      for (const [index, [kind, value]] of [["register", "x8"], ["immediate", "16"], ["register", "x7"]].entries()) {
+        const x = 110 + index * 125;
+        ctx.fillStyle = kind === "register" ? "#4194c8" : "#f0b41e";
+        ctx.fillRect(x, y + 73, 94, 65);
+        await drawSticker(ctx, kind, value, x + 12, y + 89, 65, 33);
+      }
+    }
+    await drawSticker(ctx, "instruction", "jal", 218, 74, 57, 24);
+    const duplicateBars = await window.RiscVVision.analyzeCanvas(bars, { instructionDefinitions: defs });
+    const geometryBars = await window.RiscVVision.analyzeCanvas(bars, { instructionDefinitions: defs, runOcr: false });
     let ocrCalls = 0;
     let failOcr = false;
     window.Tesseract = { createWorker: async () => ({
@@ -221,7 +253,7 @@ try {
     const signed = await window.RiscVVision.analyzeCanvas(await scene("addi", true), { instructionDefinitions: defs });
     failOcr = true;
     const failed = await window.RiscVVision.analyzeCanvas(await scene("addi", true), { instructionDefinitions: defs });
-    return { offline, unsupported, signed, failed, ocrCalls };
+    return { offline, unsupported, duplicateBars, geometryBars, signed, failed, ocrCalls };
   }, samples);
   console.log("Browser offline program:", JSON.stringify(results.offline.drafts.map(({ opcode, values }) => ({ opcode, values }))));
   assert.deepEqual(results.offline.drafts[0].values, { rd: "x31", rs1: "x11", imm: 0 });
@@ -229,6 +261,10 @@ try {
   assert.deepEqual(results.offline.drafts[0].errors, []);
   assert.equal(results.unsupported.drafts[0].opcode, "");
   assert(results.unsupported.warnings.some((warning) => warning.includes("LB")));
+  assert.equal(results.duplicateBars.detections.length, 8);
+  assert.deepEqual(programFrom(results.duplicateBars), Array.from({ length: 2 }, () => ["jalr", { rd: "x8", imm: 16, rs1: "x7" }]));
+  assert(results.duplicateBars.drafts.every(({ errors }) => errors.length === 0));
+  assert.equal(results.geometryBars.drafts.length, 2, "geometry-only detection must also merge the shared bar");
   assert.equal(results.signed.drafts[0].values.imm, -16, "OCR fallback must preserve the negative sign");
   assert.equal(results.signed.drafts[0].values.rd, "x31", "OCR fallback must preserve locally matched registers");
   assert(results.ocrCalls > 0);

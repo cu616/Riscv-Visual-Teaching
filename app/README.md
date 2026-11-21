@@ -103,7 +103,7 @@
 
 开发时，`scripts/build-printed-labels.mjs` 可从原扫描件重建模板及裁剪清单，需要 `sharp`（可通过 `--sharp-path` 指定模块路径）。`node app/test-printed-labels.mjs --sharp-path <模块路径>` 会以每组第三份扫描样本作为独立测试，并检查 `pictures/1.jpg` 的实际贴纸及轻微旋转、模糊情况。词表和不支持指令的检查已纳入 `npm test`。
 
-`node app/test-vision-browser.mjs --playwright-path <模块路径> --browser <浏览器路径>` 按 `pictures/STATEMENT.txt` 验证 12 张原始照片及图 13～17 的取景区域。图 16 检查反光的绿色访存积木，图 15、17 检查截图标注遮挡字形时的漏行保护和手动核对。半高标签块仍需实拍样本验证。
+`node app/test-vision-browser.mjs --playwright-path <模块路径> --browser <浏览器路径>` 按 `pictures/STATEMENT.txt` 验证 12 张原始照片及图 13～18 的取景区域。图 16 检查反光的绿色访存积木，图 15、17 检查截图标注遮挡字形时的漏行保护和手动核对。图 18 的重复指令另有模拟画面回归，检查同一长条上的多个贴纸候选是否合并，以及相邻同色长条是否各自保留。半高标签块仍需实拍样本验证。
 
 ## 运行方式
 

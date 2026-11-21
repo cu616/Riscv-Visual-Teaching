@@ -288,6 +288,37 @@
     return union ? area / union : 0;
   }
 
+  function sameInstructionBar(a, b) {
+    if (a.kind !== "instruction" || b.kind !== "instruction" || a.category !== b.category) return false;
+    const overlapWidth = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+    const overlapHeight = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
+    // Alternative crops of one sticker can have little in common, while the
+    // colored face they sit on still occupies the same horizontal band.
+    return overlapWidth >= Math.min(a.width, b.width) * 0.80
+      && overlapHeight >= Math.min(a.height, b.height) * 0.50
+      && Math.abs(a.centerY - b.centerY) <= Math.max(a.height, b.height) * 0.55;
+  }
+
+  function mergeInstructionBars(detections) {
+    const trustworthy = (item) => Boolean(item.templateMatched || item.unsupportedOpcode);
+    const stickerArea = ({ stickerRect }) => stickerRect ? stickerRect.width * stickerRect.height : 0;
+    const unique = [];
+    for (const detection of detections) {
+      const index = unique.findIndex((item) => sameInstructionBar(item, detection));
+      if (index < 0) {
+        unique.push(detection);
+        continue;
+      }
+      const current = unique[index];
+      const currentArea = stickerArea(current);
+      const newArea = stickerArea(detection);
+      const preferNew = trustworthy(detection) !== trustworthy(current) ? trustworthy(detection)
+        : newArea > currentArea * 1.35 || (newArea >= currentArea / 1.35 && detection.confidence > current.confidence);
+      if (preferNew) unique[index] = detection;
+    }
+    detections.splice(0, detections.length, ...unique);
+  }
+
   function removeOverlaps(items) {
     const result = [];
     for (const item of [...items].sort((a, b) => b.area - a.area)) {
@@ -1145,22 +1176,26 @@
       // Allow progress and cancel UI to paint between blocks.
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
+    mergeInstructionBars(detections);
     const unreadableInstructions = [];
     for (const candidate of recoveryDetections) {
-      const existing = detections.findIndex((item) => intersectionOverUnion(item.stickerRect, candidate.stickerRect) > 0.30);
-      if (existing >= 0 && (detections[existing].templateMatched || detections[existing].unsupportedOpcode)) continue;
+      const sameSticker = detections.findIndex((item) => intersectionOverUnion(item.stickerRect, candidate.stickerRect) > 0.30);
+      if (sameSticker >= 0 && (detections[sameSticker].templateMatched || detections[sameSticker].unsupportedOpcode)) continue;
       candidate.recognitionMode = "printed";
       if (!matchPrintedDetection(sourceCanvas, analysis, candidate, true)) {
-        if (candidate.kind === "instruction" && existing < 0) unreadableInstructions.push(candidate);
+        if (candidate.kind === "instruction" && sameSticker < 0) unreadableInstructions.push(candidate);
         continue;
       }
+      // Matching may reclassify a blue candidate as a register. Compare its
+      // physical bar only after resolving that classification.
+      const existing = sameSticker >= 0 ? sameSticker : detections.findIndex((item) => sameInstructionBar(item, candidate));
       if (existing < 0) detections.push(candidate);
-      else detections[existing] = candidate;
+      else if (!detections[existing].templateMatched && !detections[existing].unsupportedOpcode) detections[existing] = candidate;
     }
     // Keep a clearly supported row available for manual review even when a
     // damaged label has no reliable match. Do not guess an opcode from its color.
     for (const candidate of unreadableInstructions) {
-      if (detections.some((item) => item.kind === "instruction" && intersectionOverUnion(item, candidate) > 0.45)
+      if (detections.some((item) => sameInstructionBar(item, candidate))
         || !hasOperandRowBelow(candidate, detections)) continue;
       candidate.unresolvedPrintedText = true;
       detections.push(candidate);
@@ -1218,6 +1253,7 @@
       }
     }
 
+    if (options.runOcr === false) mergeInstructionBars(detections);
     if (!detections.length) warnings.push("没有找到带文字贴纸的积木，请调整光线或角度后重试。");
 
     detections.forEach(normalizeDetection);
