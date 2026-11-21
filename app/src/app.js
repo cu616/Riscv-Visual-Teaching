@@ -180,6 +180,8 @@
       document.addEventListener("mouseup", handleOhMouseUp);
     }
     renderRegisterSelector();
+    dom.customLabelInput.replaceChildren(...window.RiscVVision.PHYSICAL_LABEL_NAMES.map((name) =>
+      new Option(name, name, name === "loop", name === "loop")));
     bindEvents();
     renderOperandPalette();
     renderExamples();
@@ -268,7 +270,7 @@
     dom.undoEditBtn.addEventListener("click", undoLastEdit);
     dom.customImmInput.addEventListener("input", renderOperandPalette);
     dom.customRegisterInput.addEventListener("change", renderOperandPalette);
-    dom.customLabelInput.addEventListener("input", renderOperandPalette);
+    dom.customLabelInput.addEventListener("change", renderOperandPalette);
     dom.prevBtn.addEventListener("click", handlePreviousCommand);
     dom.stepBtn.addEventListener("click", handleNextCommand);
     dom.autoBtn.addEventListener("click", startAutoRun);

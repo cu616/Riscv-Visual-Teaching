@@ -367,235 +367,156 @@
     return removeOverlaps(detections);
   }
 
-  function hasHandwriting(imageData, imageWidth, imageHeight, rect) {
-    const left = clamp(Math.floor(rect.x), 0, imageWidth - 1);
-    const top = clamp(Math.floor(rect.y), 0, imageHeight - 1);
-    const right = clamp(Math.ceil(rect.x + rect.width), left + 1, imageWidth);
-    const bottom = clamp(Math.ceil(rect.y + rect.height), top + 1, imageHeight);
-    const brightnessSamples = [];
-    for (let y = top; y < bottom; y += 1) {
-      for (let x = left; x < right; x += 1) {
-        const source = (y * imageWidth + x) * 4;
-        const hsv = rgbToHsv(imageData.data[source], imageData.data[source + 1], imageData.data[source + 2]);
-        if (hsv.s < 0.7) brightnessSamples.push(hsv.v);
+  const STICKER_CATEGORIES = ["", "jump", "branch", "memory", "arithmetic"];
+  const STICKER_COLORS = ["", "red", "yellow", "green", "blue"];
+  const FAINT_GREEN = 5;
+
+  function hasStickerInk(image, imageWidth, sticker) {
+    const { x, y, width, height } = sticker;
+    const light = new Uint32Array(256);
+    let total = 0;
+    // Only inspect the center. The bounding box of a tilted sticker contains
+    // colored corners and can overlap the shadow or the block underneath.
+    for (let row = y + Math.ceil(height * 0.12); row < y + height * 0.88; row += 1) {
+      for (let col = x + Math.ceil(width * 0.1); col < x + width * 0.9; col += 1) {
+        const i = (row * imageWidth + col) * 4;
+        const high = Math.max(image.data[i], image.data[i + 1], image.data[i + 2]);
+        const low = Math.min(image.data[i], image.data[i + 1], image.data[i + 2]);
+        if (high - low <= (image.data[i] >= image.data[i + 2] ? 115 : 60)) { light[high] += 1; total += 1; }
       }
     }
-    brightnessSamples.sort((leftValue, rightValue) => leftValue - rightValue);
-    const background = brightnessSamples.length
-      ? brightnessSamples[Math.floor(brightnessSamples.length * 0.78)]
-      : 0.9;
-    const inkThreshold = clamp(background - 0.14, 0.58, 0.78);
-    let darkPixels = 0;
-    for (let y = top; y < bottom; y += 1) {
-      for (let x = left; x < right; x += 1) {
-        const source = (y * imageWidth + x) * 4;
-        const hsv = rgbToHsv(imageData.data[source], imageData.data[source + 1], imageData.data[source + 2]);
-        if (hsv.v < inkThreshold && hsv.s < 0.7) darkPixels += 1;
+    let bright = 0, paper = 255;
+    while (paper > 0 && bright < total * 0.25) bright += light[paper--];
+    let ink = 0;
+    for (let i = 0; i < paper - 34; i += 1) ink += light[i];
+    return ink >= Math.max(8, width * height * 0.007);
+  }
+
+  function colorSupport(colorMap, width, height, sticker, recovery) {
+    const { x, y, width: w, height: h } = sticker;
+    const padding = Math.max(3, Math.round(h * (recovery ? 0.48 : 0.24)));
+    const counts = new Uint32Array(5);
+    let total = 0;
+    for (let row = Math.max(0, y - padding); row < Math.min(height, y + h + padding); row += 1) {
+      for (let col = Math.max(0, x - padding); col < Math.min(width, x + w + padding); col += 1) {
+        if (row >= y && row < y + h && col >= x && col < x + w) continue;
+        const color = colorMap[row * width + col];
+        counts[color === FAINT_GREEN ? (recovery ? 3 : 0) : color] += 1;
+        total += 1;
       }
     }
-    const area = Math.max(1, (right - left) * (bottom - top));
-    return darkPixels >= Math.max(8, Math.round(area * 0.005));
+    let family = 1;
+    for (let i = 2; i < counts.length; i += 1) if (counts[i] > counts[family]) family = i;
+    return counts[family] >= total * (recovery ? 0.22 : 0.36) ? family : 0;
   }
 
-  function findStickerRect(imageData, imageWidth, imageHeight, block) {
-    const left = clamp(Math.floor(block.x), 0, imageWidth - 1);
-    const right = clamp(Math.ceil(block.x + block.width), left + 1, imageWidth);
-    const blockTop = block.kind === "instruction"
-      ? block.y + block.height * 0.26
-      : block.y + block.height * 0.12;
-    const top = clamp(Math.floor(blockTop), 0, imageHeight - 1);
-    const bottom = clamp(Math.ceil(block.y + block.height), top + 1, imageHeight);
-    const regionWidth = right - left;
-    const regionHeight = bottom - top;
-    const mask = new Uint8Array(regionWidth * regionHeight);
+  function stickerColorSpan(colorMap, width, sticker, family, recovery) {
+    const { x, y, width: w, height: h } = sticker;
+    const maxGap = Math.max(2, Math.round(h * 0.22));
+    const spans = [];
+    for (const position of [0.2, 0.35, 0.5, 0.65, 0.8]) {
+      const row = Math.floor(y + h * position) * width;
+      const extend = (start, direction) => {
+        let edge = start;
+        for (let col = start + direction; col >= 0 && col < width; col += direction) {
+          const color = colorMap[row + col];
+          if (color === family || (recovery && family === 3 && color === FAINT_GREEN)) edge = col;
+          if (Math.abs(col - edge) > (recovery && edge === start ? h * 0.7 : maxGap)) break;
+        }
+        return edge;
+      };
+      spans.push({ left: extend(x, -1), right: extend(x + w - 1, 1) });
+    }
+    return spans.sort((a, b) => (a.right - a.left) - (b.right - b.left))[2];
+  }
 
-    for (let y = 0; y < regionHeight; y += 1) {
-      for (let x = 0; x < regionWidth; x += 1) {
-        const source = ((top + y) * imageWidth + left + x) * 4;
-        const red = imageData.data[source];
-        const green = imageData.data[source + 1];
-        const blue = imageData.data[source + 2];
-        const hsv = rgbToHsv(red, green, blue);
-        const brightness = (red + green + blue) / 3;
-        if (brightness > 132 && hsv.s < 0.34) mask[y * regionWidth + x] = 1;
+  function stickerComponents(paper, width, height, paperClass = 1) {
+    // Remove thin connections made by reflections or bright edges so adjoining
+    // paper candidates do not turn into one oversized connected component.
+    const core = new Uint8Array(paper.length);
+    const radius = Math.max(1, Math.round(Math.min(width, height) / 340));
+    const vertical = radius * width;
+    for (let y = radius; y < height - radius; y += 1) {
+      for (let x = radius; x < width - radius; x += 1) {
+        const p = y * width + x;
+        core[p] = paper[p] === paperClass && paper[p - radius] === paperClass && paper[p + radius] === paperClass
+          && paper[p - vertical] === paperClass && paper[p + vertical] === paperClass;
       }
     }
-
-    const candidates = findComponents(mask, regionWidth, regionHeight, 1, Math.max(35, regionWidth * regionHeight * 0.012))
-      .filter((item) => item.width / item.height > 1.15 && item.width > regionWidth * 0.16)
-      .sort((a, b) => b.area - a.area);
-    const sticker = candidates.find((candidate) => hasHandwriting(imageData, imageWidth, imageHeight, {
-      x: left + candidate.x,
-      y: top + candidate.y,
-      width: candidate.width,
-      height: candidate.height
-    }));
-    if (!sticker) return null;
-    const paddingX = Math.max(2, Math.round(sticker.width * 0.05));
-    const paddingY = Math.max(2, Math.round(sticker.height * 0.12));
-    return {
-      x: clamp(left + sticker.x + paddingX, 0, imageWidth - 1),
-      y: clamp(top + sticker.y + paddingY, 0, imageHeight - 1),
-      width: Math.max(1, sticker.width - paddingX * 2),
-      height: Math.max(1, sticker.height - paddingY * 2)
-    };
+    return findComponents(core, width, height, 1, Math.max(40, width * height * 0.00010))
+      .map(({ x, y, width: w, height: h, fill }) => ({
+        x: x - radius, y: y - radius, width: w + radius * 2, height: h + radius * 2, fill
+      }));
   }
 
-  function findStickerCandidatesInImage(imageData, width, height) {
-    const mask = new Uint8Array(width * height);
-    for (let pixel = 0, source = 0; pixel < mask.length; pixel += 1, source += 4) {
-      const red = imageData.data[source];
-      const green = imageData.data[source + 1];
-      const blue = imageData.data[source + 2];
-      const hsv = rgbToHsv(red, green, blue);
-      const brightness = (red + green + blue) / 3;
-      if (brightness > 132 && hsv.s < 0.34) mask[pixel] = 1;
+  function detectStickeredBlocksFromImageData(imageData, width, height, { includeIgnored = false } = {}) {
+    const paper = new Uint8Array(width * height);
+    const separatedPaper = new Uint8Array(paper.length);
+    const brightPaper = new Uint8Array(paper.length);
+    const colors = new Uint8Array(paper.length);
+    for (let p = 0, i = 0; p < paper.length; p += 1, i += 4) {
+      const r = imageData.data[i], g = imageData.data[i + 1], b = imageData.data[i + 2];
+      const high = Math.max(r, g, b);
+      const low = Math.min(r, g, b);
+      const brightness = (r + g + b) / 3;
+      const neutral = high - low <= high * (r >= b ? 0.32 : 0.26);
+      // Glare desaturates green plastic, but it often still has a green bias.
+      // Keep that surface from joining a white sticker to the background.
+      const greenBias = g - Math.max(r, b) > Math.max(5, g * 0.022);
+      if (neutral && brightness > 132) paper[p] = 1;
+      if (paper[p] && !greenBias) separatedPaper[p] = 1;
+      if (r > 200 && g > 165 && r - b > r * 0.29 && r - b < r * 0.44) brightPaper[p] = 2;
+      else if (neutral && brightness > 200) brightPaper[p] = 1;
+      const color = classifyColor(r, g, b);
+      colors[p] = Math.min(color, 4) || (greenBias && high - low > high * 0.12 ? FAINT_GREEN : 0);
     }
-    return findComponents(mask, width, height, 1, Math.max(80, width * height * 0.00015))
-      .filter((item) => {
-        const aspect = item.width / item.height;
-        const insideImage = item.x > 1 && item.y > 1 && item.x + item.width < width - 1 && item.y + item.height < height - 1;
-        return insideImage
-          && aspect > 1.15
-          && aspect < 6
-          && item.width > width * 0.05
-          && item.width < width * 0.36
-          && item.height > height * 0.03
-          && item.height < height * 0.3
-          && item.fill > 0.35
-          && hasHandwriting(imageData, width, height, item);
-      })
-      .sort((a, b) => a.y - b.y || a.x - b.x);
-  }
-
-  function colorFamily(colorClass) {
-    if (colorClass === 1) return "red";
-    if (colorClass === 2) return "yellow";
-    if (colorClass === 3) return "green";
-    if (colorClass === 4 || colorClass === 5) return "blue";
-    return "";
-  }
-
-  function matchesColorFamily(colorClass, family) {
-    return colorFamily(colorClass) === family;
-  }
-
-  function dominantColorFamilyAroundSticker(imageData, width, height, sticker) {
-    const paddingX = Math.round(sticker.width * 0.35);
-    const paddingY = Math.round(sticker.height * 0.7);
-    const left = clamp(sticker.x - paddingX, 0, width - 1);
-    const top = clamp(sticker.y - paddingY, 0, height - 1);
-    const right = clamp(sticker.x + sticker.width + paddingX, left + 1, width);
-    const bottom = clamp(sticker.y + sticker.height + paddingY, top + 1, height);
-    const counts = { red: 0, yellow: 0, green: 0, blue: 0 };
-    for (let y = top; y < bottom; y += 1) {
-      for (let x = left; x < right; x += 1) {
-        if (x >= sticker.x && x < sticker.x + sticker.width && y >= sticker.y && y < sticker.y + sticker.height) continue;
-        const source = (y * width + x) * 4;
-        const family = colorFamily(classifyColor(imageData.data[source], imageData.data[source + 1], imageData.data[source + 2]));
-        if (family) counts[family] += 1;
+    const detected = [];
+    function makeDetection(sticker, recovery) {
+      const { x, y, width: w, height: h, fill } = sticker;
+      if (w < 18 || h < 12 || w > width * 0.36 || h > height * 0.25
+        || w / h < 0.55 || w / h > 5.5 || fill < (recovery ? 0.32 : 0.52)
+        || x < 1 || y < 1 || x + w >= width || y + h >= height) return null;
+      const family = colorSupport(colors, width, height, sticker, recovery);
+      if (!family || !hasStickerInk(imageData, width, sticker)) return null;
+      const span = stickerColorSpan(colors, width, sticker, family, recovery);
+      const spanWidth = span.right - span.left + 1;
+      // Measure only the color run touching this sticker. Pixels in the next
+      // column or in a mouse-pad drawing cannot extend the width of this block.
+      const isInstruction = spanWidth >= 4.3 * h && spanWidth >= 2.0 * w;
+      if (!isInstruction && family === 1) return null;
+      if (!isInstruction && family === 3 && spanWidth < h * 1.65) return null;
+      const kind = isInstruction ? "instruction" : ["", "", "immediate", "label", "register"][family];
+      const category = isInstruction ? STICKER_CATEGORIES[family] : kind;
+      const blockHeight = Math.min(h * 1.75, height);
+      const blockY = clamp(y + h / 2 - blockHeight / 2, 0, height - blockHeight);
+      return {
+        x: span.left, y: blockY, width: spanWidth, height: blockHeight,
+        centerX: isInstruction ? (span.left + span.right) / 2 : x + w / 2, centerY: y + h / 2,
+        area: spanWidth * blockHeight,
+        kind, category, colorName: STICKER_COLORS[family],
+        rawText: "", value: "", confidence: 0,
+        stickerRect: { x, y, width: w, height: h }
+      };
+    }
+    for (const sticker of findComponents(paper, width, height, 1, Math.max(55, width * height * 0.00012))) {
+      const detection = makeDetection(sticker, false);
+      if (detection) detected.push(detection);
+    }
+    // Extra masks can separate thin bridges or isolate washed-out labels.
+    // Candidates need confirmation from text or an attached operand row.
+    const recoveryDetections = [];
+    const separatedStickers = stickerComponents(separatedPaper, width, height);
+    const brighterStickers = stickerComponents(brightPaper, width, height);
+    const warmStickers = stickerComponents(brightPaper, width, height, 2);
+    for (const sticker of [...separatedStickers, ...brighterStickers, ...warmStickers]) {
+      const detection = makeDetection(sticker, true);
+      if (detection && ![...detected, ...recoveryDetections].some((item) => intersectionOverUnion(item.stickerRect, detection.stickerRect) > 0.95)) {
+        recoveryDetections.push(detection);
       }
     }
-    return Object.entries(counts).sort((leftEntry, rightEntry) => rightEntry[1] - leftEntry[1])[0]?.[0] || "";
-  }
-
-  function horizontalColorSpan(imageData, width, height, sticker, family) {
-    const top = clamp(Math.floor(sticker.y - sticker.height * 0.15), 0, height - 1);
-    const bottom = clamp(Math.ceil(sticker.y + sticker.height * 1.15), top + 1, height);
-    let best = { x: sticker.x, width: sticker.width };
-    for (let y = top; y < bottom; y += 1) {
-      let minX = width;
-      let maxX = -1;
-      for (let x = 0; x < width; x += 1) {
-        const source = (y * width + x) * 4;
-        const colorClass = classifyColor(imageData.data[source], imageData.data[source + 1], imageData.data[source + 2]);
-        if (!matchesColorFamily(colorClass, family)) continue;
-        minX = Math.min(minX, x);
-        maxX = Math.max(maxX, x);
-      }
-      if (maxX >= minX && maxX - minX + 1 > best.width) best = { x: minX, width: maxX - minX + 1 };
-    }
-    return best;
-  }
-
-  function insetStickerRect(sticker, width, height) {
-    const paddingX = Math.max(2, Math.round(sticker.width * 0.05));
-    const paddingY = Math.max(2, Math.round(sticker.height * 0.12));
-    return {
-      x: clamp(sticker.x + paddingX, 0, width - 1),
-      y: clamp(sticker.y + paddingY, 0, height - 1),
-      width: Math.max(1, sticker.width - paddingX * 2),
-      height: Math.max(1, sticker.height - paddingY * 2)
-    };
-  }
-
-  function fallbackDetectionFromSticker(imageData, width, height, sticker, allStickers) {
-    const family = dominantColorFamilyAroundSticker(imageData, width, height, sticker);
-    if (!family) return null;
-    const centerY = sticker.y + sticker.height / 2;
-    const rowPeers = allStickers.filter((other) => {
-      const otherCenterY = other.y + other.height / 2;
-      return Math.abs(centerY - otherCenterY) <= Math.max(sticker.height, other.height) * 0.75;
-    });
-    const span = horizontalColorSpan(imageData, width, height, sticker, family);
-    const isInstruction = rowPeers.length === 1 && span.width >= width * 0.28;
-    if (family === "red" && !isInstruction) return null;
-    const kind = isInstruction ? "instruction" : family === "blue" ? "register" : family === "yellow" ? "immediate" : "label";
-    const category = isInstruction
-      ? ({ red: "jump", yellow: "branch", green: "memory", blue: "arithmetic" }[family])
-      : kind;
-    const blockHeight = isInstruction
-      ? sticker.height * 2.25
-      : sticker.height * (kind === "label" ? 1.55 : 1.9);
-    const blockWidth = isInstruction ? span.width : sticker.width * 1.4;
-    const x = clamp(isInstruction ? span.x : sticker.x - sticker.width * 0.2, 0, width - 1);
-    const y = clamp(sticker.y - sticker.height * (isInstruction ? 0.75 : 0.45), 0, height - 1);
-    const clippedWidth = Math.max(1, Math.min(blockWidth, width - x));
-    const clippedHeight = Math.max(1, Math.min(blockHeight, height - y));
-    return {
-      x,
-      y,
-      width: clippedWidth,
-      height: clippedHeight,
-      area: clippedWidth * clippedHeight * 0.5,
-      fill: 0.5,
-      kind,
-      category,
-      colorName: family,
-      centerX: x + clippedWidth / 2,
-      centerY: y + clippedHeight / 2,
-      rawText: "",
-      value: "",
-      confidence: 0,
-      stickerRect: insetStickerRect(sticker, width, height),
-      recoveredFromSticker: true
-    };
-  }
-
-  function detectStickeredBlocksFromImageData(imageData, width, height) {
-    const candidates = detectBlocksFromImageData(imageData, width, height);
-    candidates.forEach((detection) => {
-      detection.stickerRect = findStickerRect(imageData, width, height, detection);
-    });
-    const detections = candidates.filter((detection) => detection.stickerRect);
-    const globalStickers = findStickerCandidatesInImage(imageData, width, height);
-    globalStickers.forEach((sticker) => {
-      const centerX = sticker.x + sticker.width / 2;
-      const centerY = sticker.y + sticker.height / 2;
-      const alreadyMapped = detections.some((detection) => {
-        const mappedSticker = detection.stickerRect;
-        if (!mappedSticker) return false;
-        return centerX >= mappedSticker.x && centerX <= mappedSticker.x + mappedSticker.width
-          && centerY >= mappedSticker.y && centerY <= mappedSticker.y + mappedSticker.height;
-      });
-      if (alreadyMapped) return;
-      const fallback = fallbackDetectionFromSticker(imageData, width, height, sticker, globalStickers);
-      if (fallback) detections.push(fallback);
-    });
-    return {
-      detections: removeOverlaps(detections),
-      ignoredDetections: candidates.filter((detection) => !detection.stickerRect)
-    };
+    const ignoredDetections = includeIgnored ? detectBlocksFromImageData(imageData, width, height)
+      .filter((candidate) => !detected.some((item) => intersectionOverUnion(candidate, item) > 0.25)) : [];
+    return { detections: detected, recoveryDetections, ignoredDetections };
   }
 
   function levenshtein(left, right) {
@@ -1155,8 +1076,64 @@
     return "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_";
   }
 
-  async function recognizeDetections(sourceCanvas, analysis, detections, onProgress) {
-    const pending = [];
+  function matchPrintedDetection(sourceCanvas, analysis, detection, retryCrop = false) {
+    const printed = global.RiscVPrintedLabels;
+    if (!printed || !detection.stickerRect) return false;
+    const sticker = detection.stickerRect;
+    const readCrop = (rect) => {
+      const crop = cropForOcr(sourceCanvas, rect, analysis.scale, true);
+      return crop.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, crop.width, crop.height);
+    };
+    const image = readCrop(sticker);
+    let match = printed.match(image, detection.kind, detection.category);
+    if (retryCrop && detection.kind === "instruction" && !match.accepted && !match.unsupported) {
+      // A recovered sticker can include reflective tape or lose the pale edge
+      // below the ink. Retry with an inset and with the lower edge trimmed.
+      const h = sticker.height;
+      const inset = { x: sticker.x + h * 0.14, y: sticker.y + h * 0.08, width: sticker.width - h * 0.23, height: Math.min(h, analysis.canvas.height - sticker.y - h * 0.08) };
+      const attempts = [
+        printed.match(readCrop(inset), detection.kind, detection.category),
+        ...[0.78, 0.83].map((fraction) => printed.match(readCrop({ ...sticker, height: h * fraction }),
+          detection.kind, detection.category, undefined, { softer: true, clippedBottom: true }))
+      ];
+      const strong = attempts.filter((item) => item.accepted || item.unsupported);
+      if (strong.length && strong.every((item) => item.value === strong[0].value)) match = strong[0];
+    }
+    if (!match.accepted && !match.unsupported && detection.colorName === "blue" && detection.kind === "instruction") {
+      // Adjacent blue registers can share a continuous color run. Require a
+      // readable x-number before overriding the geometric classification.
+      const register = printed.match(image, "register", "register");
+      if (register.accepted) {
+        match = register;
+        detection.kind = detection.category = "register";
+        detection.centerX = sticker.x + sticker.width / 2;
+        detection.width = Math.min(detection.width, sticker.height * 3.2);
+        detection.x = clamp(detection.centerX - detection.width / 2, 0, analysis.canvas.width - detection.width);
+        detection.area = detection.width * detection.height;
+      }
+    }
+    if (!match.accepted && !match.unsupported) return false;
+    detection.rawText = match.value;
+    detection.confidence = match.confidence;
+    detection.templateMatched = match.accepted;
+    detection.unsupportedOpcode = match.unsupported;
+    detection.unresolvedPrintedText = false;
+    normalizeDetection(detection);
+    return true;
+  }
+
+  function hasOperandRowBelow(instruction, detections) {
+    const bottom = instruction.centerY + instruction.height * 1.55;
+    const right = instruction.x + instruction.width;
+    const row = detections.filter((item) => (item.kind === "register" || item.kind === "immediate")
+      && item.templateMatched && item.centerX >= instruction.x && item.centerX <= right
+      && item.centerY > instruction.centerY + instruction.height * 0.55 && item.centerY <= bottom);
+    return row.some((item, index) => row.slice(index + 1).some((peer) =>
+      Math.abs(item.centerY - peer.centerY) < instruction.height * 0.45
+      && Math.abs(item.centerX - peer.centerX) > instruction.width * 0.22));
+  }
+
+  async function recognizeDetections(sourceCanvas, analysis, detections, recoveryDetections, onProgress) {
     // Complete local matching first, so an unavailable OCR network cannot erase it.
     for (let index = 0; index < detections.length; index += 1) {
       const detection = detections[index];
@@ -1164,23 +1141,31 @@
       detection.recognitionMode = "printed";
       detection.unresolvedPrintedText = detection.kind === "instruction";
       onProgress?.(`正在匹配打印标签 ${index + 1} / ${detections.length}`);
-      const crop = cropForOcr(sourceCanvas, detection.stickerRect, analysis.scale, true);
-      if (!crop) continue;
-      const image = crop.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, crop.width, crop.height);
-      const match = global.RiscVPrintedLabels?.match(image, detection.kind, detection.category);
-      if (match?.accepted || match?.unsupported) {
-        detection.rawText = match.value;
-        detection.confidence = match.confidence;
-        detection.templateMatched = match.accepted;
-        detection.unsupportedOpcode = match.unsupported;
-        detection.unresolvedPrintedText = false;
-        normalizeDetection(detection);
-      } else {
-        pending.push(detection);
-      }
+      matchPrintedDetection(sourceCanvas, analysis, detection);
       // Allow progress and cancel UI to paint between blocks.
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
+    const unreadableInstructions = [];
+    for (const candidate of recoveryDetections) {
+      const existing = detections.findIndex((item) => intersectionOverUnion(item.stickerRect, candidate.stickerRect) > 0.30);
+      if (existing >= 0 && (detections[existing].templateMatched || detections[existing].unsupportedOpcode)) continue;
+      candidate.recognitionMode = "printed";
+      if (!matchPrintedDetection(sourceCanvas, analysis, candidate, true)) {
+        if (candidate.kind === "instruction" && existing < 0) unreadableInstructions.push(candidate);
+        continue;
+      }
+      if (existing < 0) detections.push(candidate);
+      else detections[existing] = candidate;
+    }
+    // Keep a clearly supported row available for manual review even when a
+    // damaged label has no reliable match. Do not guess an opcode from its color.
+    for (const candidate of unreadableInstructions) {
+      if (detections.some((item) => item.kind === "instruction" && intersectionOverUnion(item, candidate) > 0.45)
+        || !hasOperandRowBelow(candidate, detections)) continue;
+      candidate.unresolvedPrintedText = true;
+      detections.push(candidate);
+    }
+    const pending = detections.filter((item) => !item.templateMatched && !item.unsupportedOpcode);
     if (!pending.length) return;
     const worker = await getOcrWorker(onProgress);
     for (let index = 0; index < pending.length; index += 1) {
@@ -1225,32 +1210,47 @@
     const stickeredBlocks = detectStickeredBlocksFromImageData(imageData, analysis.canvas.width, analysis.canvas.height);
     const detections = stickeredBlocks.detections;
     const warnings = [];
-    if (!detections.some((item) => item.kind === "instruction")) {
-      warnings.push("没有检测到长条指令积木，请调整光线、角度或裁剪范围后重试。");
-    }
-    if (stickeredBlocks.ignoredDetections.length) {
-      warnings.push(`已忽略 ${stickeredBlocks.ignoredDetections.length} 个没有检测到文字贴纸的背景色块。`);
-    }
-
-    if (options.runOcr !== false && detections.length) {
+    if (options.runOcr !== false && (detections.length || stickeredBlocks.recoveryDetections.length)) {
       try {
-        await recognizeDetections(sourceCanvas, analysis, detections, onProgress);
+        await recognizeDetections(sourceCanvas, analysis, detections, stickeredBlocks.recoveryDetections, onProgress);
       } catch (error) {
         warnings.push(error instanceof Error ? error.message : "补充 OCR 暂时不可用，请手动校正未识别标签。");
       }
     }
+
+    if (!detections.length) warnings.push("没有找到带文字贴纸的积木，请调整光线或角度后重试。");
 
     detections.forEach(normalizeDetection);
     detections.filter((item) => item.unsupportedOpcode).forEach((item) => {
       warnings.push(`打印标签 ${item.rawText.toUpperCase()} 暂不支持，请删除该指令或手动选择支持的指令。`);
     });
     const drafts = mapLayout(detections, options.instructionDefinitions || {});
+    const attached = new Set(drafts.flatMap((draft) => draft.operands));
+    const detached = detections.filter((item) => (item.kind === "register" || item.kind === "immediate") && !attached.has(item));
+    // A detached row above the first instruction or two clearly separated
+    // operand rows under one instruction can indicate a missed instruction.
+    const first = drafts[0]?.source;
+    const above = first ? detached.filter((item) => item.centerY < first.centerY
+      && item.centerY > first.centerY - first.height * 2.5
+      && item.centerX >= first.x && item.centerX <= first.x + first.width) : [];
+    const missingFirstInstruction = above.some((item, index) => above.slice(index + 1)
+      .some((peer) => Math.abs(peer.centerY - item.centerY) < Math.max(peer.height, item.height) * 0.45));
+    const missingLaterInstruction = drafts.some(({ operands }) => {
+      const rows = operands.filter((item) => item.kind === "register" || item.kind === "immediate")
+        .sort((a, b) => a.centerY - b.centerY);
+      return rows.some((item, index) => index >= 2 && index < rows.length - 1
+        && item.centerY - rows[index - 1].centerY > Math.max(item.height, rows[index - 1].height) * 1.1);
+    });
+    const missingInstructionRow = missingFirstInstruction || missingLaterInstruction;
+    if (missingInstructionRow) warnings.push("检测到多出的一排操作数，可能漏识别了一条指令。请调整角度或光线后重拍。");
+    else if (drafts.length && detached.length) warnings.push(`有 ${detached.length} 块操作数未对应到指令，请核对照片与程序是否一致。`);
     onProgress("识别完成，请核对结果。");
     return {
       analysisWidth: analysis.canvas.width,
       analysisHeight: analysis.canvas.height,
       detections,
       drafts,
+      missingInstructionRow,
       warnings
     };
   }

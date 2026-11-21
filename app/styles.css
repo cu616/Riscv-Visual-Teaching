@@ -4405,7 +4405,8 @@ body.vision-dialog-open {
 }
 
 .vision-media-stage video[hidden],
-.vision-media-stage canvas[hidden] {
+.vision-media-stage canvas[hidden],
+.vision-empty-state[hidden] {
   display: none;
 }
 

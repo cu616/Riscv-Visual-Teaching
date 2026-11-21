@@ -224,12 +224,16 @@
       const errorCount = groupedIssues.filter((group) => group.errors.length).length;
       const warningCount = groupedIssues.filter((group) => group.warnings.length).length;
       let status = `检测到 ${blockCount} 块积木，重建 ${instructionCount} 条指令。请核对后导入。`;
-      if (errorCount) {
+      if (result.missingInstructionRow) {
+        status = "可能漏识别了一条指令。请确认所有积木标签清晰可见后重拍。";
+      } else if (!instructionCount && blockCount) {
+        status = `检测到 ${blockCount} 块操作数积木，识别结果已标注在照片上。`;
+      } else if (errorCount) {
         status = `检测到 ${blockCount} 块积木，其中 ${errorCount} 条指令存在必须修正的语法错误，已标红。`;
       } else if (warningCount) {
         status = `检测到 ${blockCount} 块积木，其中 ${warningCount} 条指令存在结构警示；可删除多余积木或直接导入。`;
       }
-      setStatus(status, instructionCount === 0 || errorCount > 0);
+      setStatus(status, result.missingInstructionRow || blockCount === 0 || errorCount > 0);
     } catch (error) {
       dom.resultList.innerHTML = '<div class="vision-result-empty error">识别失败，请调整角度、光线或手动上传其他照片。</div>';
       setStatus(error instanceof Error ? error.message : "识别失败。", true);
@@ -263,7 +267,9 @@
 
   function renderDrafts() {
     if (!session.drafts.length) {
-      dom.resultList.innerHTML = '<div class="vision-result-empty">没有检测到可导入的长条指令积木。</div>';
+      dom.resultList.innerHTML = session.result?.detections.length
+        ? '<div class="vision-result-empty">照片只有操作数积木。拼接到指令积木后即可识别并导入程序。</div>'
+        : '<div class="vision-result-empty">没有检测到可导入的长条指令积木。</div>';
       return;
     }
     dom.resultList.innerHTML = session.drafts.map((draft, index) => renderDraftCard(draft, index)).join("");
@@ -412,12 +418,14 @@
 
   function updateApplyState() {
     session.drafts.forEach(validateDraft);
-    const canApply = !session.busy && vision.canApplyDrafts(session.drafts);
+    const canApply = !session.busy && !session.result?.missingInstructionRow && vision.canApplyDrafts(session.drafts);
     dom.apply.disabled = !canApply;
     dom.apply.setAttribute("aria-disabled", String(!canApply));
     dom.apply.title = canApply
       ? "将核对后的结果应用到指令编辑区"
-      : session.drafts.length
+      : session.result?.missingInstructionRow
+        ? "请重拍，确认没有漏掉指令"
+        : session.drafts.length
         ? "请先修正所有红色语法错误"
         : "请先完成照片识别";
   }
@@ -492,6 +500,7 @@
   }
 
   function applyResult() {
+    if (session.result?.missingInstructionRow) return;
     const firstInvalidIndex = session.drafts.findIndex((draft) => partitionDraftIssues(validateDraft(draft)).errors.length);
     if (firstInvalidIndex >= 0) {
       setStatus("无法应用：请先补全或修正红色语法错误；黄色结构警示不会阻止导入。", true);

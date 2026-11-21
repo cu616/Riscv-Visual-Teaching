@@ -75,7 +75,7 @@ console.log(`Held-out scan samples: ${holdouts.length - failures.length}/${holdo
 if (failures.length) console.log(JSON.stringify(failures, null, 2));
 assert.equal(failures.length, 0, "independent scan copies should match without training on themselves");
 
-const photo = fileURLToPath(new URL("pictures/新标签_add.jpg", root));
+const photo = fileURLToPath(new URL("pictures/1.jpg", root));
 const { data, info } = await sharp(photo).resize({ width: 960, height: 760, fit: "inside" }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
 const detections = vision.detectStickeredBlocksFromImageData({ width: info.width, height: info.height, data }, info.width, info.height).detections;
 const instructions = detections.filter((item) => item.kind === "instruction");

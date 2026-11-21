@@ -412,7 +412,8 @@ paintRect(stickerFilterImage, 100, 300, 400, 60, memoryGreen);
 const stickeredBlocks = visionLayout.detectStickeredBlocksFromImageData(
   stickerFilterImage,
   stickerFilterImage.width,
-  stickerFilterImage.height
+  stickerFilterImage.height,
+  { includeIgnored: true }
 );
 assert(stickeredBlocks.detections.some((item) => item.kind === "instruction" && item.category === "branch"),
   "a colored instruction with a white label sticker should remain detectable");
