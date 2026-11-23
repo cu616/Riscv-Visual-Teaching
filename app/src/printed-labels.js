@@ -3,6 +3,7 @@
   const WIDTH = 48;
   const HEIGHT = 32;
   const decoded = new WeakMap();
+  const coarseMasks = new WeakMap();
 
   function inkPoints(image, softer = false, clippedBottom = false) {
     if (!image?.width || !image?.height || !image.data) return [];
@@ -134,11 +135,14 @@
     };
   }
 
-  function decode(template) {
+  function decode(template, coarse) {
     if (!decoded.has(template)) {
       decoded.set(template, smoothPixels(Float32Array.from(template.mask, (value) => parseInt(value, 16) / 15)));
     }
-    return decoded.get(template);
+    const pixels = decoded.get(template);
+    if (!coarse) return pixels;
+    if (!coarseMasks.has(template)) coarseMasks.set(template, smoothPixels(smoothPixels(pixels)));
+    return coarseMasks.get(template);
   }
 
   // Tolerate subpixel shifts in thin serifs on downsampled camera frames.
@@ -153,10 +157,10 @@
     return result;
   }
 
-  function similarity(signature, pixels, template) {
+  function similarity(signature, pixels, template, coarse) {
     const aspectRatio = Math.abs(Math.log(signature.aspect / template.aspect));
     if (aspectRatio > 0.35) return 0;
-    const target = decode(template);
+    const target = decode(template, coarse);
     let product = 0, normA = 0, normB = 0;
     for (let i = 0; i < target.length; i += 1) {
       const a = pixels[i], b = target[i];
@@ -165,7 +169,8 @@
     return product / Math.sqrt(normA * normB || 1) - aspectRatio * 0.16;
   }
 
-  function match(image, kind, category, bank = global.RiscVPrintedLabelTemplates, { softer = false, clippedBottom = false } = {}) {
+  function match(image, kind, category, bank = kind === "label" ? global.RiscVNamedLabelTemplates : global.RiscVPrintedLabelTemplates,
+    { softer = false, clippedBottom = false, coarse = false } = {}) {
     const points = inkPoints(image, softer, clippedBottom);
     const templates = (bank?.samples || []).filter((item) => item.kind === kind);
     if (!templates.length) return { value: "", accepted: false, confidence: 0 };
@@ -173,9 +178,10 @@
     function scoreAngle(angle) {
       const signature = signatureFromPoints(points, angle);
       if (!signature) return;
-      const pixels = smoothPixels(signature.pixels);
+      let pixels = smoothPixels(signature.pixels);
+      if (coarse) pixels = smoothPixels(smoothPixels(pixels));
       for (const template of templates) {
-        const score = similarity(signature, pixels, template);
+        const score = similarity(signature, pixels, template, coarse);
         if (score > (scores.get(template.value)?.confidence || 0)) {
           scores.set(template.value, { value: template.value, category: template.category, supported: template.supported, confidence: score });
         }
@@ -197,7 +203,7 @@
     const unsupported = best.confidence >= 0.82 && kind === "instruction" && best.supported === false;
     const categoryMismatch = accepted && kind === "instruction" && best.category !== category;
     if (!softer && !accepted && !unsupported) {
-      const alternative = match(image, kind, category, bank, { softer: true, clippedBottom });
+      const alternative = match(image, kind, category, bank, { softer: true, clippedBottom, coarse });
       if (alternative.accepted || alternative.unsupported) return alternative;
     }
     return { ...best, margin, accepted: accepted && !unsupported && !categoryMismatch, unsupported, categoryMismatch };

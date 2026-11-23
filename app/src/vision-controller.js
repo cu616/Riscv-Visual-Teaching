@@ -395,9 +395,10 @@
   function handleResultChange(event) {
     const row = event.target.closest("[data-vision-index]");
     if (!row) return;
-    const index = Number(row.dataset.visionIndex);
-    syncDraftFromRow(row, session.drafts[index]);
-    const draft = session.drafts[index];
+    const draft = session.drafts[Number(row.dataset.visionIndex)];
+    // Replacing the preview can blur an input from a discarded draft.
+    if (!draft) return;
+    syncDraftFromRow(row, draft);
     if (!event.target.matches("[data-vision-opcode]")) {
       updateDraftCardValidation(row, draft);
       return;
@@ -412,7 +413,7 @@
 
   function validateDraft(draft) {
     const definition = bridge.instructionDefinitions[draft.opcode];
-    draft.errors = vision.validateDraftOperands(draft.opcode, definition, draft.operands || [], draft.values || {});
+    draft.errors = vision.validateDraftOperands(draft.opcode, definition, draft.operands || [], draft.values || {}, draft);
     return draft.errors;
   }
 
@@ -451,6 +452,7 @@
     const row = event.target.closest("[data-vision-index]");
     if (!row) return;
     const draft = session.drafts[Number(row.dataset.visionIndex)];
+    if (!draft) return;
     syncDraftFromRow(row, draft);
     updateDraftCardValidation(row, draft);
   }

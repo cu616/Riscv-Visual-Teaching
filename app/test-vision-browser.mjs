@@ -16,7 +16,7 @@ try {
   const page = await browser.newPage();
   const errors = [];
   const externalRequests = [];
-  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("pageerror", (error) => errors.push(error.stack || error.message));
   await page.route("**/*", async (route) => {
     if (new URL(route.request().url()).hostname !== "127.0.0.1") {
       externalRequests.push(route.request().url());
@@ -96,7 +96,8 @@ try {
   // The new cases are screenshots. Only feed their photo area to the recognizer.
   const screenshots = [
     [13, [22, 227, 645, 362]], [14, [26, 210, 644, 362]], [15, [27, 216, 644, 362]],
-    [16, [30, 211, 644, 362]], [17, [25, 293, 644, 362]], [18, [25, 323, 644, 362]]
+    [16, [30, 211, 644, 362]], [17, [25, 293, 644, 362]], [18, [25, 323, 644, 362]],
+    [24, [25, 306, 644, 361]], [25, [25, 208, 644, 362]]
   ];
   const captureCases = await page.evaluate(async (screenshots) => {
     window.Tesseract = { createWorker: async () => { throw new Error("Offline test"); } };
@@ -112,7 +113,8 @@ try {
       const result = await window.RiscVVision.analyzeCanvas(canvas, {
         instructionDefinitions: window.RiscVTeaching.INSTRUCTION_DEFS
       });
-      results.push({ result, png: canvas.toDataURL().split(",")[1] });
+      const raw = result.drafts.map(({ opcode, labelTag, values }) => ({ opcode, labelTag, ...values }));
+      results.push({ result, parsed: window.RiscVTeaching.parseProgram(raw), png: canvas.toDataURL().split(",")[1] });
     }
     return results;
   }, screenshots);
@@ -176,6 +178,105 @@ try {
   assert(duplicateScreenshot.drafts.filter(({ category }) => category === "jump").length <= 1);
   assert.deepEqual(programFrom(duplicateScreenshot).slice(-2), [expectedCapture[0], expectedLoad]);
   console.log("Screenshots 13–18 passed: glare recovery, missed-row protection, and manual review of obscured fields.");
+
+  const registerCase = captureCases[6].result;
+  assert.deepEqual(programFrom(registerCase), [expectedProgram[2], expectedCapture[1], ["bne", { rs1: "x12", rs2: "x14", label: "loop" }]]);
+  assert.deepEqual(registerCase.warnings, []);
+  const deskLamp = captureCases[7].result;
+  assert.deepEqual(programFrom(deskLamp), [expectedCapture[1], expectedLoad, ["blt", { rs1: "x16", rs2: "x12", label: "loop" }],
+    ["andi", { rd: "x12", rs1: "x29", imm: 16 }]]);
+  assert.equal(deskLamp.detections.length, 18);
+  assert.deepEqual(deskLamp.drafts.map(({ labelTag }) => labelTag), ["start", "", "", "loop"]);
+  assert(deskLamp.drafts.every(({ errors }) => errors.length === 0));
+  assert.deepEqual(deskLamp.warnings, []);
+  const parsedDeskLamp = captureCases[7].parsed;
+  assert.deepEqual(parsedDeskLamp.errors, []);
+  assert.deepEqual(parsedDeskLamp.labelMap, { start: 0, loop: 3 });
+  assert.equal(parsedDeskLamp.instructions[2].targetIndex, 3);
+  console.log("Screenshots 24–25 passed offline: x14 remains intact and the cool desk-lamp program is complete.");
+
+  const labeledCases = await page.evaluate(async () => {
+    const results = [];
+    for (const photo of [19, 20, 21, 22, 23, 23, 21]) {
+      const image = new Image();
+      image.src = `/pictures/${photo}.jpg`;
+      await image.decode();
+      const tilt = results.length === 5 ? 3 * Math.PI / 180 : 0;
+      const scale = Math.min(1, (tilt ? 1280 : 2400) / Math.max(image.width, image.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(image.width * scale);
+      canvas.height = Math.round(image.height * scale);
+      const context = canvas.getContext("2d");
+      context.fillStyle = "white";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.translate(canvas.width / 2, canvas.height / 2);
+      context.rotate(tilt);
+      context.drawImage(image, -canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
+      if (results.length === 6) {
+        // Apply a smooth cool shadow to a separate, clean capture. This avoids
+        // relying only on the pixels of the two annotated screenshots.
+        const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+        for (let y = 0; y < canvas.height; y += 1) {
+          const shade = 0.94 - 0.12 * y / canvas.height;
+          for (let x = 0; x < canvas.width; x += 1) {
+            const i = (y * canvas.width + x) * 4;
+            pixels.data[i] *= shade * 0.86;
+            pixels.data[i + 1] *= shade;
+            pixels.data[i + 2] *= shade * 1.17;
+          }
+        }
+        context.putImageData(pixels, 0, 0);
+      }
+      const result = await window.RiscVVision.analyzeCanvas(canvas, {
+        instructionDefinitions: window.RiscVTeaching.INSTRUCTION_DEFS
+      });
+      const raw = result.drafts.map(({ opcode, labelTag, values }) => ({ opcode, labelTag, ...values }));
+      const parsed = raw.length ? window.RiscVTeaching.parseProgram(raw) : null;
+      results.push({ result, parsed, photo });
+    }
+    return results;
+  });
+  for (const { result } of labeledCases.slice(0, 2)) {
+    assert.equal(result.drafts.length, 0, "standalone half-height blocks must not create instructions");
+    assert.equal(result.detections.length, 6);
+    assert(result.detections.every(({ kind }) => kind === "label"));
+    const labels = [...result.detections].sort((a, b) => a.centerX - b.centerX);
+    const topDown = (a, b) => a.centerY - b.centerY;
+    assert.deepEqual(labels.slice(0, 3).sort(topDown).map(({ value }) => value), ["main", "loop", "end"]);
+    assert.deepEqual(labels.slice(3).sort(topDown).map(({ value }) => value), ["target", "start", "done"]);
+    assert.deepEqual(result.warnings, []);
+  }
+  for (const [index, { result, parsed, photo }] of labeledCases.slice(2).entries()) {
+    const scenario = `photo ${photo}${index === 3 ? " with tilt" : index === 4 ? " with cool light and shadow" : ""}`;
+    assert.equal(result.detections.length, 13, scenario);
+    assert.equal(result.detections.filter(({ kind }) => kind === "label").length, 3);
+    assert.deepEqual(programFrom(result), [expectedCapture[0], expectedLoad, ["jal", { rd: "x12", label: "loop" }]], scenario);
+    assert.deepEqual(result.drafts.map(({ labelTag }) => labelTag), ["main", "loop", ""]);
+    assert(result.drafts.every(({ errors }) => errors.length === 0));
+    assert.deepEqual(result.warnings, []);
+    assert.deepEqual(parsed.errors, []);
+    assert.deepEqual(parsed.labelMap, { main: 0, loop: 1 });
+    assert.equal(parsed.instructions[2].targetIndex, 1);
+  }
+  await page.locator("#visionImageInput").setInputFiles(fileURLToPath(new URL("pictures/22.jpg", root)));
+  await page.waitForFunction(() => !document.getElementById("visionAnalyzeBtn").disabled);
+  await page.locator("#visionAnalyzeBtn").click();
+  await page.locator("#visionApplyBtn:not(:disabled)").waitFor();
+  await page.locator("#visionApplyBtn").click();
+  await page.locator(".vision-dialog").waitFor({ state: "hidden" });
+  const capNames = await page.locator("#instructionList .label-dock [data-kind=label]").allTextContents();
+  assert.deepEqual(capNames.map((name) => name.trim()), ["Lmain", "Lloop"]);
+  assert.match(await page.locator("#assemblyPreview").textContent(), /jal x12, loop/);
+  console.log("Photos 19–23 passed offline, including reflection, tilt, simulated cool shadow, assembled labels, and workspace import.");
+
+  await page.locator("#visionCaptureBtn").click();
+  await page.locator("#visionImageInput").setInputFiles({ name: "capture-25.png", mimeType: "image/png", buffer: Buffer.from(captureCases[7].png, "base64") });
+  await page.waitForFunction(() => !document.getElementById("visionAnalyzeBtn").disabled);
+  await page.locator("#visionAnalyzeBtn").click();
+  await page.locator("#visionApplyBtn:not(:disabled)").waitFor();
+  await page.locator("#visionApplyBtn").click();
+  await page.locator(".vision-dialog").waitFor({ state: "hidden" });
+  assert.match(await page.locator("#assemblyPreview").textContent(), /blt x16, x12, loop/);
 
   const results = await page.evaluate(async (samples) => {
     const load = (url) => new Promise((resolve, reject) => {

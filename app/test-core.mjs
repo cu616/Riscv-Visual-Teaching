@@ -610,4 +610,35 @@ assert(noisyBltzDraft.values.rs1 === "x1" && noisyBltzDraft.values.label === "ma
   "the noisy BLTZ structure should keep x1 and main");
 assert(noisyBltzDraft.errors.some((issue) => issue.includes("立即数") && issue.includes("2")),
   "the physical immediate 2 below BLTZ should remain visible as a non-blocking extra block warning");
+// All three labels are in the gap between the branch and the next bar.
+// The cap straddles the next bar's left edge; the branch target is below its
+// right half; the detached label cannot be mistaken for either connection.
+const closeLabels = [
+  detected("instruction", "branch", "beq", 100, 100, 400, 60),
+  detected("register", "register", "x1", 125, 168, 70, 60),
+  detected("register", "register", "x2", 245, 168, 70, 60),
+  detected("label", "label", "loop", 365, 169, 80, 30),
+  detected("label", "label", "loop", 55, 174, 85, 30),
+  detected("label", "label", "end", 530, 180, 65, 30),
+  detected("instruction", "arithmetic", "add", 100, 205, 400, 60)
+];
+const closeDrafts = visionLayout.mapLayout(closeLabels, context.window.RiscVTeaching.INSTRUCTION_DEFS);
+assert(closeDrafts[0].values.label === "loop" && closeDrafts[0].operands.length === 3 && !closeDrafts[0].errors.length,
+  "a named target between two close instruction bars must stay with the branch above");
+assert(closeDrafts[1].labelTag === "loop" && closeDrafts[1].definitionLabel === closeLabels[4],
+  "a left overhanging cap between those same bars must define the lower instruction");
+closeLabels[4].value = "";
+const unreadableCap = visionLayout.mapLayout(closeLabels, context.window.RiscVTeaching.INSTRUCTION_DEFS)[1];
+assert(unreadableCap.definitionLabel === closeLabels[4] && unreadableCap.errors.some((issue) => issue.includes("定义标签未读清")),
+  "an unreadable definition cap stays attached and requires review");
+closeLabels[3].value = "";
+closeLabels[3].rawText = "garbled";
+closeLabels[3].recognitionMode = "printed";
+const unreadableTarget = visionLayout.mapLayout(closeLabels, context.window.RiscVTeaching.INSTRUCTION_DEFS)[0];
+assert(unreadableTarget.values.label === "" && !visionLayout.canApplyDrafts([unreadableTarget]),
+  "unreadable printed text must not be coerced to a target name");
+assert(visionLayout.fieldValueFromDetection("rs2", { kind: "register", recognitionMode: "printed", value: "", rawText: "214" }) === "",
+  "unvalidated OCR digits must never be silently truncated into a register");
+assert(visionLayout.fieldValueFromDetection("imm", { kind: "immediate", recognitionMode: "printed", value: 0, rawText: "0" }) === 0,
+  "validated immediate zero must survive transfer to its operand field");
 console.log("Core parser and simulator tests passed.");

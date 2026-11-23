@@ -399,8 +399,9 @@
   }
 
   const STICKER_CATEGORIES = ["", "jump", "branch", "memory", "arithmetic"];
-  const STICKER_COLORS = ["", "red", "yellow", "green", "blue"];
+  const STICKER_COLORS = ["", "red", "yellow", "green", "blue", "", "lime"];
   const FAINT_GREEN = 5;
+  const LIME = 6;
 
   function hasStickerInk(image, imageWidth, sticker) {
     const { x, y, width, height } = sticker;
@@ -426,7 +427,7 @@
   function colorSupport(colorMap, width, height, sticker, recovery) {
     const { x, y, width: w, height: h } = sticker;
     const padding = Math.max(3, Math.round(h * (recovery ? 0.48 : 0.24)));
-    const counts = new Uint32Array(5);
+    const counts = new Uint32Array(STICKER_COLORS.length);
     let total = 0;
     for (let row = Math.max(0, y - padding); row < Math.min(height, y + h + padding); row += 1) {
       for (let col = Math.max(0, x - padding); col < Math.min(width, x + w + padding); col += 1) {
@@ -480,7 +481,7 @@
       }));
   }
 
-  function detectStickeredBlocksFromImageData(imageData, width, height, { includeIgnored = false } = {}) {
+  function detectStickeredBlocksFromImageData(imageData, width, height, { includeIgnored = false, coolLight = false } = {}) {
     const paper = new Uint8Array(width * height);
     const separatedPaper = new Uint8Array(paper.length);
     const brightPaper = new Uint8Array(paper.length);
@@ -490,7 +491,10 @@
       const high = Math.max(r, g, b);
       const low = Math.min(r, g, b);
       const brightness = (r + g + b) / 3;
-      const neutral = high - low <= high * (r >= b ? 0.32 : 0.26);
+      // Paper in local shadows can retain a blue cast after scene correction.
+      // Allow that residual tint only in scenes where white stickers confirmed it.
+      const coolPaper = coolLight && g >= r && b >= g && high - low <= high * 0.31;
+      const neutral = coolPaper || high - low <= high * (r >= b ? 0.32 : 0.26);
       // Glare desaturates green plastic, but it often still has a green bias.
       // Keep that surface from joining a white sticker to the background.
       const greenBias = g - Math.max(r, b) > Math.max(5, g * 0.022);
@@ -499,7 +503,10 @@
       if (r > 200 && g > 165 && r - b > r * 0.29 && r - b < r * 0.44) brightPaper[p] = 2;
       else if (neutral && brightness > 200) brightPaper[p] = 1;
       const color = classifyColor(r, g, b);
-      colors[p] = Math.min(color, 4) || (greenBias && high - low > high * 0.12 ? FAINT_GREEN : 0);
+      // The label blocks are yellow-green; the longer load/store bars are
+      // blue-green. Both used to share the same color bucket.
+      const lime = greenBias && g - b >= g * 0.28 && (r - b) >= (g - b) * 0.34;
+      colors[p] = lime ? LIME : Math.min(color, 4) || (greenBias && high - low > high * 0.12 ? FAINT_GREEN : 0);
     }
     const detected = [];
     function makeDetection(sticker, recovery) {
@@ -513,12 +520,12 @@
       const spanWidth = span.right - span.left + 1;
       // Measure only the color run touching this sticker. Pixels in the next
       // column or in a mouse-pad drawing cannot extend the width of this block.
-      const isInstruction = spanWidth >= 4.3 * h && spanWidth >= 2.0 * w;
+      const isInstruction = family !== LIME && spanWidth >= 4.3 * h && spanWidth >= 2.0 * w;
       if (!isInstruction && family === 1) return null;
       if (!isInstruction && family === 3 && spanWidth < h * 1.65) return null;
-      const kind = isInstruction ? "instruction" : ["", "", "immediate", "label", "register"][family];
+      const kind = isInstruction ? "instruction" : ["", "", "immediate", "label", "register", "", "label"][family];
       const category = isInstruction ? STICKER_CATEGORIES[family] : kind;
-      const blockHeight = Math.min(h * 1.75, height);
+      const blockHeight = Math.min(family === LIME ? Math.min(h * 1.65, spanWidth * 0.42) : h * 1.75, height);
       const blockY = clamp(y + h / 2 - blockHeight / 2, 0, height - blockHeight);
       return {
         x: span.left, y: blockY, width: spanWidth, height: blockHeight,
@@ -717,6 +724,9 @@
 
   function fieldValueFromDetection(field, detection) {
     if (!detection) return "";
+    // The printed-text pass already validated the whole token. In particular,
+    // do not turn an OCR fragment such as "214" into a valid register x21.
+    if (detection.recognitionMode === "printed") return detection.value ?? "";
     if (REGISTER_FIELDS.includes(field)) return normalizeRegister(detection.value || detection.rawText);
     if (["imm", "shamt"].includes(field)) return normalizeImmediate(detection.value || detection.rawText);
     if (field === "label") return normalizePhysicalLabel(detection.value || detection.rawText);
@@ -749,12 +759,13 @@
     };
   }
 
-  function validateDraftOperands(opcode, definition, operands, values) {
+  function validateDraftOperands(opcode, definition, operands, values, { definitionLabel, labelTag } = {}) {
     if (!definition) return [`语法错误：无法确认指令 ${String(opcode || "").toUpperCase()} 的参数格式。`];
     const fields = definition.fields || [];
     const mappedFields = mapFieldsFromOperands(fields, operands);
     const errors = [];
     const displayOpcode = String(opcode || "指令").toUpperCase();
+    if (definitionLabel && !labelTag) errors.push("语法错误：左上定义标签未读清，请选择标签名。");
     if (fields.length !== operands.length) {
       errors.push(`结构警示：${displayOpcode} 需要 ${fields.length} 个下挂积木，但检测到 ${operands.length} 个。`);
     }
@@ -832,49 +843,77 @@
       && (rawLetters.length >= 4 || Number(instruction.confidence || 0) >= 0.55);
   }
 
+  function assignPhysicalLabels(instructions, labels) {
+    const caps = new Map();
+    const targets = new Map();
+    const assigned = new Set();
+    const capPairs = [];
+    const bottomUp = [...instructions].reverse();
+    for (const label of labels) {
+      for (const instruction of instructions) {
+        const seam = instruction.y - (label.y + label.height);
+        const link = (label.x + label.width - instruction.x) / label.width;
+        if (link < -0.15 || link > 0.88 || label.centerX > instruction.x + instruction.width * 0.18) continue;
+        if (label.centerY >= instruction.y + instruction.height * 0.12
+          || seam < -instruction.height * 0.28 || seam > instruction.height * 0.63) continue;
+        // A cap meets the upper left stud of the lower bar. Rank by the seam
+        // and the horizontal overhang, without using the label's name.
+        capPairs.push({ label, instruction, cost: Math.abs(seam) / instruction.height + Math.abs(link - 0.5) * 0.35 });
+      }
+    }
+    for (const { label, instruction } of capPairs.sort((a, b) => a.cost - b.cost)) {
+      if (assigned.has(label) || caps.has(instruction)) continue;
+      caps.set(instruction, label);
+      assigned.add(label);
+    }
+
+    for (const label of labels) {
+      if (assigned.has(label)) continue;
+      // Use the closest bar above the label's footprint. A non-control bar in
+      // between is a barrier, so a loose label cannot jump to an earlier row.
+      const parent = bottomUp.find((instruction) => {
+        const overlap = Math.min(instruction.x + instruction.width, label.x + label.width) - Math.max(instruction.x, label.x);
+        return label.centerY > instruction.centerY + instruction.height * 0.25 && overlap >= label.width * 0.55;
+      });
+      if (!parent || !["branch", "jump"].includes(parent.category)) continue;
+      const gap = label.y - (parent.y + parent.height);
+      if (gap < -parent.height * 0.30 || gap > Math.max(parent.height * 0.95, label.height * 0.85)) continue;
+      if (!targets.has(parent)) targets.set(parent, []);
+      targets.get(parent).push(label);
+    }
+    return { caps, targets };
+  }
+
   function mapLayout(detections, instructionDefinitions) {
     const instructions = detections
       .filter((item) => item.kind === "instruction")
       .sort((a, b) => a.centerY - b.centerY || a.centerX - b.centerX);
-    const smallBlocks = detections.filter((item) => item.kind !== "instruction");
-    const assignedAsDefinition = new Set();
-    const definitionByInstruction = new Map();
-
-    instructions.forEach((instruction, instructionIndex) => {
-      const candidates = smallBlocks
-        .filter((item) => item.kind === "label" && item.value)
-        .filter((item) => !assignedAsDefinition.has(item))
-        .filter((item) => {
-          const verticalGap = instruction.y - (item.y + item.height);
-          const isAbove = item.centerY < instruction.centerY;
-          const isAtLeftEdge = item.centerX < instruction.x + instruction.width * 0.18;
-          return isAbove && isAtLeftEdge && verticalGap > -instruction.height * 0.75 && verticalGap < Math.max(item.height * 1.8, instruction.height);
-        })
-        .sort((a, b) => Math.abs(instruction.y - (a.y + a.height)) - Math.abs(instruction.y - (b.y + b.height)));
-      if (!candidates.length) return;
-      definitionByInstruction.set(instructionIndex, candidates[0]);
-      assignedAsDefinition.add(candidates[0]);
-    });
+    const smallBlocks = detections.filter((item) => item.kind !== "instruction" && item.kind !== "label");
+    const labels = detections.filter((item) => item.kind === "label");
+    const { caps, targets } = assignPhysicalLabels(instructions, labels);
 
     const drafts = instructions.map((instruction, instructionIndex) => {
       const nextInstruction = instructions[instructionIndex + 1];
       const lowerBoundary = nextInstruction ? nextInstruction.centerY : Infinity;
       const operands = smallBlocks
-        .filter((item) => !assignedAsDefinition.has(item))
         .filter((item) => item.centerY > instruction.centerY + instruction.height * 0.2)
         .filter((item) => item.centerY < lowerBoundary)
         .filter((item) => item.centerX > instruction.x - instruction.width * 0.06 && item.centerX < instruction.x + instruction.width * 1.06)
+        .concat(targets.get(instruction) || [])
         .sort((a, b) => a.centerX - b.centerX);
       const opcode = selectOpcodeForOperands(instruction, operands, instructionDefinitions);
       const definition = instructionDefinitions[opcode];
       const mappedFields = mapFieldsFromOperands(definition?.fields || [], operands);
       const values = mappedFields.values;
-      const errors = validateDraftOperands(opcode, definition, operands, values);
+      const definitionLabel = caps.get(instruction);
+      const labelTag = definitionLabel?.value || "";
+      const errors = validateDraftOperands(opcode, definition, operands, values, { definitionLabel, labelTag });
 
       return {
         opcode,
         category: instruction.category,
-        labelTag: definitionByInstruction.get(instructionIndex)?.value || "",
+        labelTag,
+        definitionLabel,
         values,
         sequenceValues: operands.map((operand) => operand.value),
         operands,
@@ -1107,16 +1146,126 @@
     return "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_";
   }
 
+  function paperTone(image, { x, y, width, height }) {
+    const samples = [];
+    for (let row = 1; row <= 7; row += 1) {
+      const i = Math.floor(y + height * row / 8) * image.width;
+      for (let col = 1; col <= 9; col += 1) {
+        const p = (i + Math.floor(x + width * col / 10)) * 4;
+        const r = image.data[p], g = image.data[p + 1], b = image.data[p + 2];
+        samples.push([r, g, b, r + g + b]);
+      }
+    }
+    samples.sort((a, b) => a[3] - b[3]);
+    return samples[Math.floor(samples.length * 0.72)];
+  }
+
+  function coolLightGains(image, detections) {
+    const tones = detections.map(({ stickerRect }) => paperTone(image, stickerRect)).filter(([r, g, b]) =>
+      r >= 115 && g >= 140 && b >= 160 && g >= r && b >= g);
+    if (tones.length < 3 || tones.length < detections.length * 0.6) return null;
+    const median = (items) => items.sort((a, b) => a - b)[Math.floor(items.length / 2)];
+    const redGain = median(tones.map(([r, g]) => g / r));
+    const blueGain = median(tones.map(([, g, b]) => g / b));
+    // Correct a cast shared by several stickers, rather than white-balancing
+    // from the background or a single bright colored reflection.
+    if (redGain < 1.065 || blueGain > 0.955) return null;
+    return [clamp(1 + (redGain - 1) * 0.9, 1, 1.16), clamp(blueGain, 0.92, 1)];
+  }
+
+  function balanceCoolLight(image, gains) {
+    for (let i = 0; i < image.data.length; i += 4) {
+      image.data[i] *= gains[0];
+      image.data[i + 2] *= gains[1];
+    }
+    return image;
+  }
+
+  function levelStickerPaper(image) {
+    const histogram = Array.from({ length: 3 }, () => new Uint32Array(256));
+    let count = 0;
+    for (let y = Math.floor(image.height * 0.12); y < image.height * 0.88; y += 2) {
+      for (let x = Math.floor(image.width * 0.18); x < image.width * 0.82; x += 2) {
+        const i = (y * image.width + x) * 4;
+        if (image.data[i + 2] < 65) continue;
+        for (let channel = 0; channel < 3; channel += 1) histogram[channel][image.data[i + channel]] += 1;
+        count += 1;
+      }
+    }
+    if (!count) return image;
+    const offsets = histogram.map((levels) => 218 - lightQuantile(levels, count * 0.72));
+    const data = new Uint8ClampedArray(image.data);
+    for (let i = 0; i < data.length; i += 4) {
+      for (let channel = 0; channel < 3; channel += 1) data[i + channel] += offsets[channel];
+    }
+    return { width: image.width, height: image.height, data };
+  }
+
+  function lightQuantile(histogram, rank) {
+    let value = 0, seen = 0;
+    while (value < 255 && (seen += histogram[value]) < rank) value += 1;
+    return value;
+  }
+
+  function matchSmallCoolLabel(image, printed) {
+    // Red is the least likely channel to clip under blue light. Try a few
+    // contrast levels and only accept lower-resolution text with agreement.
+    const histogram = new Uint32Array(256);
+    for (let i = 0; i < image.data.length; i += 8) histogram[image.data[i]] += 1;
+    const paper = lightQuantile(histogram, image.data.length * 0.70 / 8);
+    if (paper < 100) return null;
+    const data = new Uint8ClampedArray(image.data);
+    const binary = { width: image.width, height: image.height, data };
+    const matches = [14, 19, 23, 29, 36].map((drop) => {
+      const threshold = paper - drop;
+      for (let i = 0; i < data.length; i += 4) {
+        const value = image.data[i] < threshold ? 0 : 255;
+        data[i] = data[i + 1] = data[i + 2] = value;
+      }
+      return printed.match(binary, "label", "label", undefined, { softer: true, clippedBottom: true, coarse: true });
+    });
+    const [best, ...alternatives] = matches.sort((a, b) => b.confidence - a.confidence);
+    const reliable = best.confidence >= 0.70 && best.margin >= 0.055 && alternatives.some((item) => {
+      if (item.value !== best.value || item.confidence < 0.61 || item.margin < 0.035) return false;
+      return (best.confidence >= 0.73 && best.margin + item.margin >= 0.12)
+        || (best.margin >= 0.085 && item.margin >= 0.09);
+    });
+    return reliable ? { ...best, accepted: true } : null;
+  }
+
   function matchPrintedDetection(sourceCanvas, analysis, detection, retryCrop = false) {
     const printed = global.RiscVPrintedLabels;
     if (!printed || !detection.stickerRect) return false;
     const sticker = detection.stickerRect;
     const readCrop = (rect) => {
       const crop = cropForOcr(sourceCanvas, rect, analysis.scale, true);
-      return crop.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, crop.width, crop.height);
+      const image = crop.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, crop.width, crop.height);
+      return analysis.coolLight ? balanceCoolLight(image, analysis.coolLight) : image;
     };
     const image = readCrop(sticker);
+    let leveledImage;
     let match = printed.match(image, detection.kind, detection.category);
+    if (analysis.coolLight && !match.accepted && !match.unsupported) {
+      leveledImage = levelStickerPaper(image);
+      const leveled = printed.match(leveledImage, detection.kind, detection.category);
+      if (leveled.accepted || leveled.unsupported) match = leveled;
+      else if (detection.kind === "label" && sticker.height <= 22) {
+        match = matchSmallCoolLabel(image, printed) || match;
+      }
+    }
+    if (retryCrop && detection.kind === "label" && !match.accepted) {
+      // Glare can cut off one end of the sticker. Keep the paper border above
+      // and below the ink, and try extending each side independently.
+      const h = sticker.height;
+      const attempts = [-1, 1].map((direction) => {
+        const x = Math.max(0, sticker.x - Math.ceil(h * (direction < 0 ? 0.85 : 0.25)));
+        const y = Math.max(0, sticker.y - Math.ceil(h * 0.25));
+        const width = Math.min(analysis.canvas.width, sticker.x + sticker.width + Math.ceil(h * (direction > 0 ? 0.85 : 0.25))) - x;
+        const height = Math.min(analysis.canvas.height, sticker.y + sticker.height + Math.ceil(h * 0.60)) - y;
+        return printed.match(readCrop({ x, y, width, height }), "label", "label");
+      }).filter((item) => item.accepted);
+      if (attempts.length && attempts.every((item) => item.value === attempts[0].value)) match = attempts[0];
+    }
     if (retryCrop && detection.kind === "instruction" && !match.accepted && !match.unsupported) {
       // A recovered sticker can include reflective tape or lose the pale edge
       // below the ink. Retry with an inset and with the lower edge trimmed.
@@ -1133,7 +1282,8 @@
     if (!match.accepted && !match.unsupported && detection.colorName === "blue" && detection.kind === "instruction") {
       // Adjacent blue registers can share a continuous color run. Require a
       // readable x-number before overriding the geometric classification.
-      const register = printed.match(image, "register", "register");
+      let register = printed.match(image, "register", "register");
+      if (!register.accepted && leveledImage) register = printed.match(leveledImage, "register", "register");
       if (register.accepted) {
         match = register;
         detection.kind = detection.category = "register";
@@ -1242,7 +1392,16 @@
     onProgress("正在分析积木颜色和轮廓…");
     const analysis = createAnalysisCanvas(sourceCanvas);
     const imageData = analysis.context.getImageData(0, 0, analysis.canvas.width, analysis.canvas.height);
-    const stickeredBlocks = detectStickeredBlocksFromImageData(imageData, analysis.canvas.width, analysis.canvas.height);
+    let stickeredBlocks = detectStickeredBlocksFromImageData(imageData, imageData.width, imageData.height);
+    const coolLight = coolLightGains(imageData, stickeredBlocks.detections);
+    if (coolLight) {
+      analysis.coolLight = coolLight;
+      const balanced = detectStickeredBlocksFromImageData(balanceCoolLight(imageData, coolLight), imageData.width, imageData.height, { coolLight: true });
+      // A highlight can join two surfaces only after balancing. Keep the
+      // original crops as fallbacks, subject to the same template checks.
+      balanced.recoveryDetections.push(...stickeredBlocks.detections, ...stickeredBlocks.recoveryDetections);
+      stickeredBlocks = balanced;
+    }
     const detections = stickeredBlocks.detections;
     const warnings = [];
     if (options.runOcr !== false && (detections.length || stickeredBlocks.recoveryDetections.length)) {
@@ -1262,6 +1421,9 @@
     });
     const drafts = mapLayout(detections, options.instructionDefinitions || {});
     const attached = new Set(drafts.flatMap((draft) => draft.operands));
+    for (const draft of drafts) if (draft.definitionLabel) attached.add(draft.definitionLabel);
+    const looseLabels = detections.filter((item) => item.kind === "label" && !attached.has(item));
+    if (drafts.length && looseLabels.length) warnings.push(`有 ${looseLabels.length} 块标签未接到指令，请检查接挂位置。`);
     const detached = detections.filter((item) => (item.kind === "register" || item.kind === "immediate") && !attached.has(item));
     // A detached row above the first instruction or two clearly separated
     // operand rows under one instruction can indicate a missed instruction.
